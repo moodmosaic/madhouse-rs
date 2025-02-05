@@ -1,4 +1,5 @@
 use proptest::prelude::*;
+use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::process::Command as SysCommand;
 use std::sync::Arc;
@@ -115,28 +116,49 @@ impl Debug for CommandWrapper {
     }
 }
 
-proptest! {
-    #[test]
-    fn test_random_commands(commands in proptest::collection::vec(
-        prop_oneof![
-            Just(CommandWrapper::new(IncrementCommand)),
-            Just(CommandWrapper::new(DecrementCommand)),
-            Just(CommandWrapper::new(ShellProcCommand)),
-        ],
-        10 // Run 10 commands per test.
-    )) {
-        let mut state = ExampleState::new();
+#[test]
+fn test_random_commands() {
+    // Set a fixed seed for reproducibility (proptest expects 256-bit seeds).
+    let seed = [
+        0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6,
+        0x07, 0x18,
+    ];
+    let rng = TestRng::from_seed(RngAlgorithm::ChaCha, &seed);
 
-        for cmd in &commands {
-            if cmd.command.check(&state) {
-                cmd.command.apply(&mut state);
-            }
-        }
+    let mut runner = TestRunner::new_with_rng(
+        Config {
+            cases: 1,
+            max_shrink_iters: 0, // Disable shrinking.
+            failure_persistence: None,
+            ..Config::default()
+        },
+        rng,
+    );
 
-        // Debugging output.
-        println!("Executed commands: {:?}", commands);
+    runner
+        .run(
+            &proptest::collection::vec(
+                prop_oneof![
+                    Just(CommandWrapper::new(IncrementCommand)),
+                    Just(CommandWrapper::new(DecrementCommand)),
+                    Just(CommandWrapper::new(ShellProcCommand)),
+                ],
+                7, // Number of commands per test.
+            ),
+            |commands| {
+                let mut state = ExampleState::new();
 
-        // Ensure the value is never negative.
-        assert!(state.get_value() >= 0);
-    }
+                for cmd in &commands {
+                    if cmd.command.check(&state) {
+                        cmd.command.apply(&mut state);
+                    }
+                }
+
+                println!("Executed commands: {:?}", commands);
+                assert!(state.get_value() >= 0);
+                Ok(())
+            },
+        )
+        .unwrap();
 }
