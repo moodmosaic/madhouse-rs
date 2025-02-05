@@ -73,22 +73,25 @@ impl Command for DecrementCommand {
 pub struct ShellProcCommand;
 
 impl Command for ShellProcCommand {
-  fn check(&self, _state: &ExampleState) -> bool {
-      true // Always allowed.
-  }
+    fn check(&self, _state: &ExampleState) -> bool {
+        true // Always allowed.
+    }
 
-  fn apply(&self, _state: &mut ExampleState) {
-      let output = SysCommand::new("echo")
-          .arg("Hello, world!")
-          .output()
-          .expect("Failed to execute process");
+    fn apply(&self, _state: &mut ExampleState) {
+        let output = SysCommand::new("echo")
+            .arg("Hello, world!")
+            .output()
+            .expect("Failed to execute process");
 
-      println!("Process Output: {}", String::from_utf8_lossy(&output.stdout));
-  }
+        println!(
+            "Process Output: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
 
-  fn label(&self) -> &'static str {
-      "ShellProcCommand"
-  }
+    fn label(&self) -> &'static str {
+        "ShellProc"
+    }
 }
 
 /// Wrapper to make `dyn Command` clonable and debuggable.
