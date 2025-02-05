@@ -28,7 +28,7 @@ impl ExampleState {
 pub trait Command {
     fn check(&self, state: &ExampleState) -> bool;
     fn apply(&self, state: &mut ExampleState);
-    fn name(&self) -> &'static str; // Added for debugging.
+    fn label(&self) -> &'static str; // Added for debugging.
 }
 
 /// Increment command.
@@ -44,7 +44,7 @@ impl Command for IncrementCommand {
         state.increment();
     }
 
-    fn name(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         "IncrementCommand"
     }
 }
@@ -62,7 +62,7 @@ impl Command for DecrementCommand {
         state.decrement();
     }
 
-    fn name(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         "DecrementCommand"
     }
 }
@@ -84,7 +84,7 @@ impl CommandWrapper {
 // Manually implement Debug for `CommandWrapper`.
 impl Debug for CommandWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", self.command.name()) // Print command name.
+        write!(f, "{}", self.command.label()) // Print command label.
     }
 }
 
