@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::process::Command as SysCommand;
 use std::sync::Arc;
 
 pub struct ExampleState {
@@ -67,6 +68,29 @@ impl Command for DecrementCommand {
     }
 }
 
+/// Command that spawns an external process.
+#[derive(Debug, Clone)]
+pub struct ShellProcCommand;
+
+impl Command for ShellProcCommand {
+  fn check(&self, _state: &ExampleState) -> bool {
+      true // Always allowed.
+  }
+
+  fn apply(&self, _state: &mut ExampleState) {
+      let output = SysCommand::new("echo")
+          .arg("Hello, world!")
+          .output()
+          .expect("Failed to execute process");
+
+      println!("Process Output: {}", String::from_utf8_lossy(&output.stdout));
+  }
+
+  fn label(&self) -> &'static str {
+      "ShellProcCommand"
+  }
+}
+
 /// Wrapper to make `dyn Command` clonable and debuggable.
 #[derive(Clone)]
 struct CommandWrapper {
@@ -94,6 +118,7 @@ proptest! {
         prop_oneof![
             Just(CommandWrapper::new(IncrementCommand)),
             Just(CommandWrapper::new(DecrementCommand)),
+            Just(CommandWrapper::new(ShellProcCommand)),
         ],
         10 // Run 10 commands per test.
     )) {
