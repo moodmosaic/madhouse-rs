@@ -29,7 +29,7 @@ impl ExampleState {
 pub trait Command {
     fn check(&self, state: &ExampleState) -> bool;
     fn apply(&self, state: &mut ExampleState);
-    fn label(&self) -> &'static str; // Added for debugging.
+    fn label(&self) -> &'static str;
 }
 
 /// Increment command.
@@ -46,7 +46,7 @@ impl Command for IncrementCommand {
     }
 
     fn label(&self) -> &'static str {
-        "IncrementCommand"
+        "Increment"
     }
 }
 
@@ -64,7 +64,7 @@ impl Command for DecrementCommand {
     }
 
     fn label(&self) -> &'static str {
-        "DecrementCommand"
+        "Decrement"
     }
 }
 
