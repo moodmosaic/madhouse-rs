@@ -1,4 +1,6 @@
 use proptest::prelude::*;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::sync::Arc;
 
 pub struct ExampleState {
   value: i32,
@@ -26,6 +28,7 @@ impl ExampleState {
 pub trait Command {
     fn check(&self, state: &ExampleState) -> bool;
     fn apply(&self, state: &mut ExampleState);
+    fn name(&self) -> &'static str; // Added for debugging.
 }
 
 /// Increment command.
@@ -39,6 +42,10 @@ impl Command for IncrementCommand {
 
     fn apply(&self, state: &mut ExampleState) {
         state.increment();
+    }
+
+    fn name(&self) -> &'static str {
+        "IncrementCommand"
     }
 }
 
@@ -54,24 +61,52 @@ impl Command for DecrementCommand {
     fn apply(&self, state: &mut ExampleState) {
         state.decrement();
     }
+
+    fn name(&self) -> &'static str {
+        "DecrementCommand"
+    }
+}
+
+/// Wrapper to make `dyn Command` clonable and debuggable.
+#[derive(Clone)]
+struct CommandWrapper {
+    command: Arc<dyn Command>,
+}
+
+impl CommandWrapper {
+    fn new<C: Command + 'static>(cmd: C) -> Self {
+        Self {
+            command: Arc::new(cmd),
+        }
+    }
+}
+
+// Manually implement Debug for `CommandWrapper`.
+impl Debug for CommandWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.command.name()) // Print command name.
+    }
 }
 
 proptest! {
     #[test]
     fn test_random_commands(commands in proptest::collection::vec(
         prop_oneof![
-            Just(Box::new(IncrementCommand) as Box<dyn Command>),
-            Just(Box::new(DecrementCommand) as Box<dyn Command>),
+            Just(CommandWrapper::new(IncrementCommand)),
+            Just(CommandWrapper::new(DecrementCommand)),
         ],
         10 // Run 10 commands per test.
     )) {
         let mut state = ExampleState::new();
 
-        for cmd in commands {
-            if cmd.check(&state) {
-                cmd.apply(&mut state);
+        for cmd in &commands {
+            if cmd.command.check(&state) {
+                cmd.command.apply(&mut state);
             }
         }
+
+        // Debugging output.
+        println!("Executed commands: {:?}", commands);
 
         // Ensure the value is never negative.
         assert!(state.get_value() >= 0);
