@@ -1,9 +1,14 @@
-use proptest::prelude::*;
-use proptest::test_runner::{Config, TestRunner};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::process::Command as SysCommand;
 use std::sync::Arc;
 
+use proptest::prelude::Just;
+use proptest::prop_oneof;
+use proptest::test_runner::{Config, TestRunner};
+
+fn main() {
+    println!("Hello, world!");
+}
 pub struct ExampleState {
     value: i32,
 }
@@ -130,7 +135,7 @@ fn stateful() {
                     Just(CommandWrapper::new(DecrementCommand)),
                     Just(CommandWrapper::new(ShellProcCommand)),
                 ],
-                7, // Number of commands per test.
+                1..100,
             ),
             |commands| {
                 let mut state = ExampleState::new();
