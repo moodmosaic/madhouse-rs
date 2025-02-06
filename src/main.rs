@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use proptest::prelude::Just;
 use proptest::prop_oneof;
-use proptest::test_runner::{Config, TestRunner};
+use proptest::proptest;
 
 fn main() {
     println!("Hello, world!");
 }
+
 pub struct ExampleState {
     value: i32,
 }
@@ -118,38 +119,28 @@ impl Debug for CommandWrapper {
     }
 }
 
-#[test]
-fn stateful() {
-    let mut runner = TestRunner::new(Config {
-        cases: 1,                  // Number of cases to run.
-        max_shrink_iters: 0,       // Disable shrinking.
-        failure_persistence: None, // Disable failure persistence.
-        ..Config::default()
-    });
-
-    runner
-        .run(
-            &proptest::collection::vec(
-                prop_oneof![
-                    Just(CommandWrapper::new(IncrementCommand)),
-                    Just(CommandWrapper::new(DecrementCommand)),
-                    Just(CommandWrapper::new(ShellProcCommand)),
-                ],
-                1..100,
-            ),
-            |commands| {
-                let mut state = ExampleState::new();
-
-                for cmd in &commands {
-                    if cmd.command.check(&state) {
-                        cmd.command.apply(&mut state);
-                    }
-                }
-
-                println!("Executed commands: {:?}", commands);
-                assert!(state.get_value() >= 0);
-                Ok(())
-            },
-        )
-        .unwrap();
+proptest! {
+  #[test]
+  fn stateful_test(
+      commands in proptest::collection::vec(
+          prop_oneof![
+              Just(CommandWrapper::new(IncrementCommand)),
+              Just(CommandWrapper::new(DecrementCommand)),
+              Just(CommandWrapper::new(ShellProcCommand)),
+          ],
+          1..10, // Change to something higher like 70.
+      )
+  ) {
+      let mut state = ExampleState::new();
+      for cmd in &commands {
+          if cmd.command.check(&state) {
+              cmd.command.apply(&mut state);
+          }
+      }
+      println!("Executed commands: {:?}", commands);
+        // Fail only if the state gets too high.
+        // This condition may be hit only rarely.
+        assert!(state.get_value() < 10,
+                "State too high: {}", state.get_value());
+  }
 }
