@@ -131,6 +131,7 @@ proptest! {
           1..10, // Change to something higher like 70.
       )
   ) {
+      println!("\n=== New Test Run ===\n");
       let mut state = ExampleState::new();
       for cmd in &commands {
           if cmd.command.check(&state) {
