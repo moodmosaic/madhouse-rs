@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::process::Command as SysCommand;
 use std::sync::Arc;
 
-use proptest::prelude::Just;
+use proptest::prelude::{Just, Strategy};
 use proptest::prop_oneof;
 use proptest::proptest;
+
+const MINER_SEEDS: [[u8; 4]; 2] = [[1, 1, 1, 1], [2, 2, 2, 2]];
 
 fn main() {
     println!("Hello, world!");
@@ -12,11 +15,15 @@ fn main() {
 
 pub struct ExampleState {
     value: i32,
+    running_miners: Vec<Vec<u8>>,
 }
 
 impl ExampleState {
     pub fn new() -> Self {
-        Self { value: 0 }
+        Self {
+            value: 0,
+            running_miners: Vec::new(),
+        }
     }
 
     pub fn increment(&mut self) {
@@ -30,6 +37,12 @@ impl ExampleState {
     pub fn get_value(&self) -> i32 {
         self.value
     }
+
+    pub fn start_miner(&mut self, miner_seed: Vec<u8>) {
+        self.running_miners.push(miner_seed);
+        // Log the updated state.
+        println!("Running miners: {:?}", self.running_miners);
+    }
 }
 
 /// A trait that all commands must implement.
@@ -37,6 +50,36 @@ pub trait Command {
     fn check(&self, state: &ExampleState) -> bool;
     fn apply(&self, state: &mut ExampleState);
     fn label(&self) -> &'static str;
+}
+
+pub struct StartMinerCommand {
+    miner_seed: Vec<u8>,
+}
+
+impl StartMinerCommand {
+    pub fn new(miner_seed: Vec<u8>) -> Self {
+        // Check validity here. Prevent invalid data from being created.
+        Self { miner_seed }
+    }
+}
+
+impl Command for StartMinerCommand {
+    fn check(&self, state: &ExampleState) -> bool {
+        // Prevents starting the same miner twice.
+        !state
+            .running_miners
+            .iter()
+            .any(|running| running == &self.miner_seed)
+    }
+
+    fn apply(&self, state: &mut ExampleState) {
+        println!("Starting miner with seed: {:?}", self.miner_seed);
+        state.start_miner(self.miner_seed.clone());
+    }
+
+    fn label(&self) -> &'static str {
+        "START_MINER"
+    }
 }
 
 /// Increment command.
@@ -127,6 +170,8 @@ proptest! {
               Just(CommandWrapper::new(IncrementCommand)),
               Just(CommandWrapper::new(DecrementCommand)),
               Just(CommandWrapper::new(ShellProcCommand)),
+              proptest::sample::select(&MINER_SEEDS)
+              .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(seed.to_vec()))),
           ],
           1..10, // Change to something higher like 70.
       )
