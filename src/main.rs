@@ -15,7 +15,7 @@ fn main() {
     println!("Hello, world!");
 }
 
-pub struct ExampleState {
+pub struct State {
     value: i32,
     running_miners: Vec<Vec<u8>>,
     last_mined_block: u64,
@@ -23,7 +23,7 @@ pub struct ExampleState {
     block_leaders: HashMap<u64, Vec<u8>>,
 }
 
-impl ExampleState {
+impl State {
     pub fn new() -> Self {
         Self {
             value: 0,
@@ -86,8 +86,8 @@ impl ExampleState {
 
 /// A trait that all commands must implement.
 pub trait Command {
-    fn check(&self, state: &ExampleState) -> bool;
-    fn apply(&self, state: &mut ExampleState);
+    fn check(&self, state: &State) -> bool;
+    fn apply(&self, state: &mut State);
     fn label(&self) -> &'static str;
 }
 
@@ -105,7 +105,7 @@ impl StartMinerCommand {
 }
 
 impl Command for StartMinerCommand {
-    fn check(&self, state: &ExampleState) -> bool {
+    fn check(&self, state: &State) -> bool {
         // Prevents starting the same miner twice.
         !state
             .running_miners
@@ -113,7 +113,7 @@ impl Command for StartMinerCommand {
             .any(|running| running == &self.miner_seed)
     }
 
-    fn apply(&self, state: &mut ExampleState) {
+    fn apply(&self, state: &mut State) {
         println!("Starting miner with seed: {:?}", self.miner_seed);
         state.start_miner(&self.miner_seed);
     }
@@ -137,7 +137,7 @@ impl SubmitBlockCommitCommand {
 }
 
 impl Command for SubmitBlockCommitCommand {
-    fn check(&self, state: &ExampleState) -> bool {
+    fn check(&self, state: &State) -> bool {
         // A miner can submit a block commit only if:
         // 1. The miner is running.
         // 2. The miner has not submitted a block commit at the same height.
@@ -152,7 +152,7 @@ impl Command for SubmitBlockCommitCommand {
                 .unwrap_or(false)
     }
 
-    fn apply(&self, state: &mut ExampleState) {
+    fn apply(&self, state: &mut State) {
         println!(
             "Submitting block commit at height {} by miner {:?}",
             state.last_mined_block + 1,
@@ -169,7 +169,7 @@ impl Command for SubmitBlockCommitCommand {
 pub struct SortitionCommand;
 
 impl Command for SortitionCommand {
-    fn check(&self, state: &ExampleState) -> bool {
+    fn check(&self, state: &State) -> bool {
         // The sortition can happen only if:
         // 1. At least one miner submitted a block commit for the upcoming
         // block.
@@ -184,7 +184,7 @@ impl Command for SortitionCommand {
                 .contains_key(&(state.last_mined_block + 1))
     }
 
-    fn apply(&self, state: &mut ExampleState) {
+    fn apply(&self, state: &mut State) {
         // Simulate a random winner by picking an index from the list of miners
         // that submitted a block commit.
         let height = state.last_mined_block + 1;
@@ -222,11 +222,11 @@ impl Command for SortitionCommand {
 pub struct IncrementCommand;
 
 impl Command for IncrementCommand {
-    fn check(&self, _state: &ExampleState) -> bool {
+    fn check(&self, _state: &State) -> bool {
         true // Always allowed.
     }
 
-    fn apply(&self, state: &mut ExampleState) {
+    fn apply(&self, state: &mut State) {
         state.increment();
     }
 
@@ -240,11 +240,11 @@ impl Command for IncrementCommand {
 pub struct DecrementCommand;
 
 impl Command for DecrementCommand {
-    fn check(&self, state: &ExampleState) -> bool {
+    fn check(&self, state: &State) -> bool {
         state.get_value() > 0 // Prevents negative values.
     }
 
-    fn apply(&self, state: &mut ExampleState) {
+    fn apply(&self, state: &mut State) {
         state.decrement();
     }
 
@@ -258,11 +258,11 @@ impl Command for DecrementCommand {
 pub struct ShellProcCommand;
 
 impl Command for ShellProcCommand {
-    fn check(&self, _state: &ExampleState) -> bool {
+    fn check(&self, _state: &State) -> bool {
         true // Always allowed.
     }
 
-    fn apply(&self, _state: &mut ExampleState) {
+    fn apply(&self, _state: &mut State) {
         let output = SysCommand::new("echo")
             .arg("Hello, world!")
             .output()
@@ -315,7 +315,7 @@ proptest! {
       )
   ) {
       println!("\n=== New Test Run ===\n");
-      let mut state = ExampleState::new();
+      let mut state = State::new();
       for cmd in &commands {
           if cmd.command.check(&state) {
               cmd.command.apply(&mut state);
