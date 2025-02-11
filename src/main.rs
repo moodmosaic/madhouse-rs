@@ -16,7 +16,6 @@ fn main() {
 }
 
 pub struct State {
-    value: i32,
     running_miners: Vec<Vec<u8>>,
     last_mined_block: u64,
     block_commits: HashMap<u64, Vec<Vec<u8>>>,
@@ -26,24 +25,11 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         Self {
-            value: 0,
             running_miners: Vec::new(),
             last_mined_block: 0,
             block_commits: HashMap::new(),
             block_leaders: HashMap::new(),
         }
-    }
-
-    pub fn increment(&mut self) {
-        self.value += 1;
-    }
-
-    pub fn decrement(&mut self) {
-        self.value -= 1;
-    }
-
-    pub fn get_value(&self) -> i32 {
-        self.value
     }
 
     pub fn start_miner(&mut self, miner_seed: &[u8]) {
@@ -217,65 +203,6 @@ impl Command for SortitionCommand {
     }
 }
 
-/// Increment command.
-#[derive(Debug, Clone)]
-pub struct IncrementCommand;
-
-impl Command for IncrementCommand {
-    fn check(&self, _state: &State) -> bool {
-        true // Always allowed.
-    }
-
-    fn apply(&self, state: &mut State) {
-        state.increment();
-    }
-
-    fn label(&self) -> &'static str {
-        "A"
-    }
-}
-
-/// Decrement command.
-#[derive(Debug, Clone)]
-pub struct DecrementCommand;
-
-impl Command for DecrementCommand {
-    fn check(&self, state: &State) -> bool {
-        state.get_value() > 0 // Prevents negative values.
-    }
-
-    fn apply(&self, state: &mut State) {
-        state.decrement();
-    }
-
-    fn label(&self) -> &'static str {
-        "B"
-    }
-}
-
-/// Command that spawns an external process.
-#[derive(Debug, Clone)]
-pub struct ShellProcCommand;
-
-impl Command for ShellProcCommand {
-    fn check(&self, _state: &State) -> bool {
-        true // Always allowed.
-    }
-
-    fn apply(&self, _state: &mut State) {
-        let output = SysCommand::new("echo")
-            .arg("Hello, world!")
-            .output()
-            .expect("Failed to execute process");
-
-        println!("{}", String::from_utf8_lossy(&output.stdout).trim_end());
-    }
-
-    fn label(&self) -> &'static str {
-        "C"
-    }
-}
-
 /// Wrapper to make `dyn Command` clonable and debuggable.
 #[derive(Clone)]
 struct CommandWrapper {
@@ -302,9 +229,6 @@ proptest! {
   fn stateful_test(
       commands in proptest::collection::vec(
           prop_oneof![
-              Just(CommandWrapper::new(IncrementCommand)),
-              Just(CommandWrapper::new(DecrementCommand)),
-              Just(CommandWrapper::new(ShellProcCommand)),
               Just(CommandWrapper::new(SortitionCommand)),
               proptest::sample::select(&MINER_SEEDS)
               .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed))),
@@ -321,10 +245,8 @@ proptest! {
               cmd.command.apply(&mut state);
           }
       }
+      // TODO: Print the commands that passed the check instead? Print all?
+      // Print both selected and executed commands?
       println!("Executed commands: {:?}", commands);
-        // Fail only if the state gets too high.
-        // This condition may be hit only rarely.
-        assert!(state.get_value() < 10,
-                "State too high: {}", state.get_value());
   }
 }
