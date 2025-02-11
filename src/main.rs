@@ -44,12 +44,10 @@ impl ExampleState {
 
     pub fn start_miner(&mut self, miner_seed: Vec<u8>) {
         self.running_miners.push(miner_seed);
-        // Log the updated state.
         println!("Running miners: {:?}", self.running_miners);
     }
 
     pub fn add_block_commit(&mut self, height: u64, miner_seed: Vec<u8>) {
-        // Log the updated state.
         println!(
             "Block commit at height {} by miner {:?}",
             height, miner_seed
