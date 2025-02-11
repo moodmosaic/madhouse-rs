@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::process::Command as SysCommand;
