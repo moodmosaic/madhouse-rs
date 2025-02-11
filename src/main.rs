@@ -65,7 +65,7 @@ impl State {
         );
     }
 
-    pub fn add_sortition_block_winner(&mut self, height: u64, miner_seed: &[u8]) {
+    pub fn add_sortition_block_leader(&mut self, height: u64, miner_seed: &[u8]) {
         match self.block_leaders.get(&height) {
             Some(_) => {
                 panic!(
@@ -76,7 +76,7 @@ impl State {
             None => {
                 self.block_leaders.insert(height, miner_seed.to_vec());
                 println!(
-                    "Block winner at height {} is miner {:?}",
+                    "Block leader at height {} is miner {:?}",
                     height, miner_seed
                 );
             }
@@ -185,7 +185,7 @@ impl Command for SortitionCommand {
     }
 
     fn apply(&self, state: &mut State) {
-        // Simulate a random winner by picking an index from the list of miners
+        // Simulate a random leader by picking an index from the list of miners
         // that submitted a block commit.
         let height = state.last_mined_block + 1;
 
@@ -201,15 +201,15 @@ impl Command for SortitionCommand {
         let hash_value = hasher.finish();
 
         // Pick the miner deterministically using the hash.
-        let winner_index = (hash_value as usize) % block_commits.len();
-        let winner = block_commits[winner_index].clone();
+        let leader_index = (hash_value as usize) % block_commits.len();
+        let leader = block_commits[leader_index].clone();
 
         println!(
-            "Sortition winner at height {} is miner {:?}",
-            height, winner
+            "Sortition leader at height {} is miner {:?}",
+            height, leader
         );
 
-        state.add_sortition_block_winner(height, &winner);
+        state.add_sortition_block_leader(height, &leader);
     }
 
     fn label(&self) -> &'static str {
