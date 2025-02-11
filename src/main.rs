@@ -42,18 +42,18 @@ impl ExampleState {
         self.value
     }
 
-    pub fn start_miner(&mut self, miner_seed: Vec<u8>) {
-        self.running_miners.push(miner_seed);
+    pub fn start_miner(&mut self, miner_seed: &[u8]) {
+        self.running_miners.push(miner_seed.to_vec());
         println!("Running miners: {:?}", self.running_miners);
     }
 
-    pub fn add_block_commit(&mut self, height: u64, miner_seed: Vec<u8>) {
+    pub fn add_block_commit(&mut self, height: u64, miner_seed: &[u8]) {
         println!(
             "Block commit at height {} by miner {:?}",
             height, miner_seed
         );
-        let existing_commits = self.block_commits.entry(height).or_insert(Vec::new());
-        existing_commits.push(miner_seed);
+        let existing_commits = self.block_commits.entry(height).or_default();
+        existing_commits.push(miner_seed.to_vec());
         println!(
             "Block commiters for height {}: {:?}",
             height,
@@ -74,9 +74,11 @@ pub struct StartMinerCommand {
 }
 
 impl StartMinerCommand {
-    pub fn new(miner_seed: Vec<u8>) -> Self {
+    pub fn new(miner_seed: &[u8]) -> Self {
         // Check validity here. Prevent invalid data from being created.
-        Self { miner_seed }
+        Self {
+            miner_seed: miner_seed.to_vec(),
+        }
     }
 }
 
@@ -91,7 +93,7 @@ impl Command for StartMinerCommand {
 
     fn apply(&self, state: &mut ExampleState) {
         println!("Starting miner with seed: {:?}", self.miner_seed);
-        state.start_miner(self.miner_seed.clone());
+        state.start_miner(&self.miner_seed);
     }
 
     fn label(&self) -> &'static str {
@@ -104,9 +106,11 @@ pub struct SubmitBlockCommitCommand {
 }
 
 impl SubmitBlockCommitCommand {
-    pub fn new(miner_seed: Vec<u8>) -> Self {
+    pub fn new(miner_seed: &[u8]) -> Self {
         // Check validity here. Prevent invalid data from being created.
-        Self { miner_seed }
+        Self {
+            miner_seed: miner_seed.to_vec(),
+        }
     }
 }
 
@@ -132,7 +136,7 @@ impl Command for SubmitBlockCommitCommand {
             state.last_mined_block + 1,
             self.miner_seed
         );
-        state.add_block_commit(state.last_mined_block + 1, self.miner_seed.clone());
+        state.add_block_commit(state.last_mined_block + 1, &self.miner_seed);
     }
 
     fn label(&self) -> &'static str {
@@ -229,9 +233,9 @@ proptest! {
               Just(CommandWrapper::new(DecrementCommand)),
               Just(CommandWrapper::new(ShellProcCommand)),
               proptest::sample::select(&MINER_SEEDS)
-              .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(seed.to_vec()))),
+              .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed))),
               proptest::sample::select(&MINER_SEEDS)
-              .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(seed.to_vec()))),
+              .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed))),
           ],
           1..10, // Change to something higher like 70.
       )
