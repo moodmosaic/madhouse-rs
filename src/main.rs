@@ -1,6 +1,7 @@
 #![allow(unused)]
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::process::Command as SysCommand;
 use std::sync::Arc;
 
@@ -19,6 +20,7 @@ pub struct ExampleState {
     running_miners: Vec<Vec<u8>>,
     last_mined_block: u64,
     block_commits: HashMap<u64, Vec<Vec<u8>>>,
+    block_leaders: HashMap<u64, Vec<u8>>,
 }
 
 impl ExampleState {
@@ -28,6 +30,7 @@ impl ExampleState {
             running_miners: Vec::new(),
             last_mined_block: 0,
             block_commits: HashMap::new(),
+            block_leaders: HashMap::new(),
         }
     }
 
@@ -60,6 +63,24 @@ impl ExampleState {
             height,
             self.block_commits.get(&height)
         );
+    }
+
+    pub fn add_sortition_block_winner(&mut self, height: u64, miner_seed: &[u8]) {
+        match self.block_leaders.get(&height) {
+            Some(_) => {
+                panic!(
+                    "FATAL: For height {} the sortition already happened!",
+                    height
+                )
+            }
+            None => {
+                self.block_leaders.insert(height, miner_seed.to_vec());
+                println!(
+                    "Block winner at height {} is miner {:?}",
+                    height, miner_seed
+                );
+            }
+        }
     }
 }
 
@@ -142,6 +163,57 @@ impl Command for SubmitBlockCommitCommand {
 
     fn label(&self) -> &'static str {
         "SUBMIT_BLOCK_COMMIT"
+    }
+}
+
+pub struct SortitionCommand;
+
+impl Command for SortitionCommand {
+    fn check(&self, state: &ExampleState) -> bool {
+        // The sortition can happen only if:
+        // 1. At least one miner submitted a block commit for the upcoming
+        // block.
+        // 2. The sortition has not happened yet for the upcoming block.
+        state
+            .block_commits
+            .get(&(state.last_mined_block + 1))
+            .map(|commits| !commits.is_empty())
+            .unwrap_or(false)
+            && !state
+                .block_leaders
+                .contains_key(&(state.last_mined_block + 1))
+    }
+
+    fn apply(&self, state: &mut ExampleState) {
+        // Simulate a random winner by picking an index from the list of miners
+        // that submitted a block commit.
+        let height = state.last_mined_block + 1;
+
+        let block_commits = state
+            .block_commits
+            .get(&height)
+            .expect("No commits found, but check() should have prevented this.");
+
+        // Use block height + all commits to create a deterministic hash.
+        let mut hasher = DefaultHasher::new();
+        height.hash(&mut hasher);
+        block_commits.hash(&mut hasher);
+        let hash_value = hasher.finish();
+
+        // Pick the miner deterministically using the hash.
+        let winner_index = (hash_value as usize) % block_commits.len();
+        let winner = block_commits[winner_index].clone();
+
+        println!(
+            "Sortition winner at height {} is miner {:?}",
+            height, winner
+        );
+
+        state.add_sortition_block_winner(height, &winner);
+    }
+
+    fn label(&self) -> &'static str {
+        "SORTITION"
     }
 }
 
@@ -233,6 +305,7 @@ proptest! {
               Just(CommandWrapper::new(IncrementCommand)),
               Just(CommandWrapper::new(DecrementCommand)),
               Just(CommandWrapper::new(ShellProcCommand)),
+              Just(CommandWrapper::new(SortitionCommand)),
               proptest::sample::select(&MINER_SEEDS)
               .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed))),
               proptest::sample::select(&MINER_SEEDS)
