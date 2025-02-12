@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::process::Command as SysCommand;
@@ -16,16 +16,16 @@ fn main() {
 }
 
 pub struct State {
-    running_miners: Vec<Vec<u8>>,
+    running_miners: HashSet<Vec<u8>>,
     last_mined_block: u64,
-    block_commits: HashMap<u64, Vec<Vec<u8>>>,
+    block_commits: HashMap<u64, HashSet<Vec<u8>>>,
     block_leaders: HashMap<u64, Vec<u8>>,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            running_miners: Vec::new(),
+            running_miners: HashSet::new(),
             last_mined_block: 0,
             block_commits: HashMap::new(),
             block_leaders: HashMap::new(),
@@ -33,7 +33,7 @@ impl State {
     }
 
     pub fn start_miner(&mut self, miner_seed: &[u8]) {
-        self.running_miners.push(miner_seed.to_vec());
+        self.running_miners.insert(miner_seed.to_vec());
         println!("Running miners: {:?}", self.running_miners);
     }
 
@@ -43,7 +43,7 @@ impl State {
             height, miner_seed
         );
         let existing_commits = self.block_commits.entry(height).or_default();
-        existing_commits.push(miner_seed.to_vec());
+        existing_commits.insert(miner_seed.to_vec());
         println!(
             "Block commiters for height {}: {:?}",
             height,
@@ -93,10 +93,7 @@ impl StartMinerCommand {
 impl Command for StartMinerCommand {
     fn check(&self, state: &State) -> bool {
         // Prevents starting the same miner twice.
-        !state
-            .running_miners
-            .iter()
-            .any(|running| running == &self.miner_seed)
+        !state.running_miners.contains(&self.miner_seed)
     }
 
     fn apply(&self, state: &mut State) {
@@ -127,10 +124,7 @@ impl Command for SubmitBlockCommitCommand {
         // A miner can submit a block commit only if:
         // 1. The miner is running.
         // 2. The miner has not submitted a block commit at the same height.
-        state
-            .running_miners
-            .iter()
-            .any(|running| running == &self.miner_seed)
+        state.running_miners.contains(&self.miner_seed)
             && !state
                 .block_commits
                 .get(&(state.last_mined_block + 1))
@@ -172,30 +166,41 @@ impl Command for SortitionCommand {
 
     fn apply(&self, state: &mut State) {
         // Simulate a random leader by picking an index from the list of miners
-        // that submitted a block commit.
-        let height = state.last_mined_block + 1;
+        // that submitted a block commit. For deterministic leader selection,
+        // we are hashing the height and the set of committers and then picking
+        // the leader based on the hash value.
+        let next_block_height = state.last_mined_block + 1;
 
-        let block_commits = state
+        let block_commits_next_block = state
             .block_commits
-            .get(&height)
-            .expect("No commits found, but check() should have prevented this.");
+            .get(&next_block_height)
+            .expect("No commits found, but check() should have prevented this.")
+            .clone();
 
-        // Use block height + all commits to create a deterministic hash.
+        let mut sorted_committers: Vec<Vec<u8>> =
+            block_commits_next_block.iter().cloned().collect();
+
+        sorted_committers.sort();
+
         let mut hasher = DefaultHasher::new();
-        height.hash(&mut hasher);
-        block_commits.hash(&mut hasher);
+        next_block_height.hash(&mut hasher);
+
+        for commit in &sorted_committers {
+            commit.hash(&mut hasher);
+        }
+
         let hash_value = hasher.finish();
 
-        // Pick the miner deterministically using the hash.
-        let leader_index = (hash_value as usize) % block_commits.len();
-        let leader = block_commits[leader_index].clone();
+        // Pick the leader deterministically.
+        let leader_index = (hash_value as usize) % sorted_committers.len();
+        let leader = sorted_committers.get(leader_index).unwrap();
 
         println!(
             "Sortition leader at height {} is miner {:?}",
-            height, leader
+            next_block_height, leader
         );
 
-        state.add_sortition_block_leader(height, &leader);
+        state.add_sortition_block_leader(next_block_height, leader);
     }
 
     fn label(&self) -> &'static str {
