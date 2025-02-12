@@ -239,7 +239,7 @@ proptest! {
               proptest::sample::select(&MINER_SEEDS)
               .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed))),
           ],
-          1..10, // Change to something higher like 70.
+          1..16, // Change to something higher like 70.
       )
   ) {
       println!("\n=== New Test Run ===\n");
@@ -251,6 +251,10 @@ proptest! {
       }
       // TODO: Print the commands that passed the check instead? Print all?
       // Print both selected and executed commands?
-      println!("Executed commands: {:?}", commands);
+      println!("\nExecuted commands:\n");
+      for command in &commands {
+        println!("{:?}", command);
+      }
+      println!("\n")
   }
 }
