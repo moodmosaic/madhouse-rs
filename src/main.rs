@@ -2,7 +2,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::process::Command as SysCommand;
 use std::sync::Arc;
 
 use proptest::prelude::{Just, Strategy};
