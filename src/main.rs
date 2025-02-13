@@ -255,11 +255,9 @@ proptest! {
       for command in &commands {
         println!("{:?}", command);
       }
-      println!("\n");
       println!("\nExecuted commands:\n");
       for command in &executed_commands {
           println!("{:?}", command);
       }
-      println!("\n");
   }
 }
