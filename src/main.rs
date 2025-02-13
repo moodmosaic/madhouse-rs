@@ -244,17 +244,22 @@ proptest! {
   ) {
       println!("\n=== New Test Run ===\n");
       let mut state = State::new();
+      let mut executed_commands = Vec::with_capacity(commands.len());
       for cmd in &commands {
           if cmd.command.check(&state) {
               cmd.command.apply(&mut state);
+              executed_commands.push(cmd);
           }
       }
-      // TODO: Print the commands that passed the check instead? Print all?
-      // Print both selected and executed commands?
-      println!("\nExecuted commands:\n");
+      println!("\nSelected commands:\n");
       for command in &commands {
         println!("{:?}", command);
       }
-      println!("\n")
+      println!("\n");
+      println!("\nExecuted commands:\n");
+      for command in &executed_commands {
+          println!("{:?}", command);
+      }
+      println!("\n");
   }
 }
