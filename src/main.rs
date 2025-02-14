@@ -76,10 +76,6 @@ impl ConstructorArgExampleCommand {
     pub fn new(value: u64) -> Self {
         Self { value }
     }
-
-    pub fn build() -> impl Strategy<Value = CommandWrapper> {
-        (0u64..5).prop_map(|val| CommandWrapper::new(ConstructorArgExampleCommand::new(val)))
-    }
 }
 
 impl Command for ConstructorArgExampleCommand {
@@ -95,6 +91,10 @@ impl Command for ConstructorArgExampleCommand {
     fn label(&self) -> &'static str {
         "CONSTRUCTOR"
     }
+
+    fn build() -> impl Strategy<Value = CommandWrapper> {
+        (0u64..5).prop_map(|val| CommandWrapper::new(ConstructorArgExampleCommand::new(val)))
+    }
 }
 
 /// A trait that all commands must implement.
@@ -102,6 +102,9 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> &'static str;
+    fn build() -> impl Strategy<Value = CommandWrapper>
+    where
+        Self: Sized;
 }
 
 pub struct StartMinerCommand {
@@ -114,11 +117,6 @@ impl StartMinerCommand {
         Self {
             miner_seed: miner_seed.to_vec(),
         }
-    }
-
-    pub fn build() -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(&MINER_SEEDS)
-            .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
 
@@ -136,6 +134,11 @@ impl Command for StartMinerCommand {
     fn label(&self) -> &'static str {
         "START_MINER"
     }
+
+    fn build() -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(&MINER_SEEDS)
+            .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
+    }
 }
 
 pub struct SubmitBlockCommitCommand {
@@ -148,11 +151,6 @@ impl SubmitBlockCommitCommand {
         Self {
             miner_seed: miner_seed.to_vec(),
         }
-    }
-
-    pub fn build() -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(&MINER_SEEDS)
-            .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
 
@@ -181,15 +179,16 @@ impl Command for SubmitBlockCommitCommand {
     fn label(&self) -> &'static str {
         "SUBMIT_BLOCK_COMMIT"
     }
+
+    fn build() -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(&MINER_SEEDS)
+            .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
+    }
 }
 
 pub struct SortitionCommand;
 
-impl SortitionCommand {
-    pub fn build() -> impl Strategy<Value = CommandWrapper> {
-        Just(CommandWrapper::new(SortitionCommand))
-    }
-}
+impl SortitionCommand {}
 
 impl Command for SortitionCommand {
     fn check(&self, state: &State) -> bool {
@@ -248,6 +247,10 @@ impl Command for SortitionCommand {
 
     fn label(&self) -> &'static str {
         "SORTITION"
+    }
+
+    fn build() -> impl Strategy<Value = CommandWrapper> {
+        Just(CommandWrapper::new(SortitionCommand))
     }
 }
 
