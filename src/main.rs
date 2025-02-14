@@ -21,6 +21,12 @@ pub struct State {
     block_leaders: HashMap<u64, Vec<u8>>,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         Self {
