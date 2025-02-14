@@ -188,8 +188,6 @@ impl Command for SubmitBlockCommitCommand {
 
 struct SortitionCommand;
 
-impl SortitionCommand {}
-
 impl Command for SortitionCommand {
     fn check(&self, state: &State) -> bool {
         // The sortition can happen only if:
