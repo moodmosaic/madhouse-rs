@@ -68,7 +68,7 @@ impl State {
     }
 }
 
-pub struct ConstructorArgExampleCommand {
+struct ConstructorArgExampleCommand {
     value: u64,
 }
 
@@ -107,7 +107,7 @@ pub trait Command {
         Self: Sized;
 }
 
-pub struct StartMinerCommand {
+struct StartMinerCommand {
     miner_seed: Vec<u8>,
 }
 
@@ -141,7 +141,7 @@ impl Command for StartMinerCommand {
     }
 }
 
-pub struct SubmitBlockCommitCommand {
+struct SubmitBlockCommitCommand {
     miner_seed: Vec<u8>,
 }
 
@@ -186,7 +186,7 @@ impl Command for SubmitBlockCommitCommand {
     }
 }
 
-pub struct SortitionCommand;
+struct SortitionCommand;
 
 impl SortitionCommand {}
 
@@ -256,7 +256,7 @@ impl Command for SortitionCommand {
 
 /// Wrapper to make `dyn Command` clonable and debuggable.
 #[derive(Clone)]
-pub struct CommandWrapper {
+struct CommandWrapper {
     command: Arc<dyn Command>,
 }
 
