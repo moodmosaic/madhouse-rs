@@ -14,17 +14,12 @@ fn main() {
     println!("Hello, world!");
 }
 
+#[derive(Default)]
 pub struct State {
     running_miners: HashSet<Vec<u8>>,
     last_mined_block: u64,
     block_commits: HashMap<u64, HashSet<Vec<u8>>>,
     block_leaders: HashMap<u64, Vec<u8>>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl State {
