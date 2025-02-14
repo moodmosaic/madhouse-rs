@@ -68,32 +68,32 @@ impl State {
     }
 }
 
-struct ConstructorArgExampleCommand {
-    value: u64,
+struct WaitForBlocksCommand {
+    count: u64,
 }
 
-impl ConstructorArgExampleCommand {
-    pub fn new(value: u64) -> Self {
-        Self { value }
+impl WaitForBlocksCommand {
+    pub fn new(count: u64) -> Self {
+        Self { count }
     }
 }
 
-impl Command for ConstructorArgExampleCommand {
+impl Command for WaitForBlocksCommand {
     fn check(&self, _state: &State) -> bool {
         true
     }
 
     fn apply(&self, state: &mut State) {
-        println!("Custom command with value: {}.", self.value);
-        state.last_mined_block += self.value;
+        println!("{} blocks mined.", self.count);
+        state.last_mined_block += self.count;
     }
 
     fn label(&self) -> &'static str {
-        "CONSTRUCTOR"
+        "WAIT_FOR_BLOCKS"
     }
 
     fn build() -> impl Strategy<Value = CommandWrapper> {
-        (0u64..5).prop_map(|val| CommandWrapper::new(ConstructorArgExampleCommand::new(val)))
+        (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
 
@@ -281,7 +281,7 @@ proptest! {
               SortitionCommand::build(),
               StartMinerCommand::build(),
               SubmitBlockCommitCommand::build(),
-              ConstructorArgExampleCommand::build(),
+              WaitForBlocksCommand::build(),
           ],
           1..16, // Change to something higher like 70.
       )
