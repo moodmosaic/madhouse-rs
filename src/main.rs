@@ -253,7 +253,7 @@ impl Command for SortitionCommand {
 
 /// Wrapper to make `dyn Command` clonable and debuggable.
 #[derive(Clone)]
-struct CommandWrapper {
+pub struct CommandWrapper {
     command: Arc<dyn Command>,
 }
 
