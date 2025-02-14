@@ -25,10 +25,8 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         Self {
-            running_miners: HashSet::new(),
             last_mined_block: 0,
-            block_commits: HashMap::new(),
-            block_leaders: HashMap::new(),
+            ..Default::default()
         }
     }
 
@@ -182,7 +180,7 @@ impl Command for SortitionCommand {
 
         sorted_committers.sort();
 
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = DefaultHasher::default();
         next_block_height.hash(&mut hasher);
 
         for commit in &sorted_committers {
@@ -244,7 +242,7 @@ proptest! {
       )
   ) {
       println!("\n=== New Test Run ===\n");
-      let mut state = State::new();
+      let mut state = State::default();
       let mut executed_commands = Vec::with_capacity(commands.len());
       for cmd in &commands {
           if cmd.command.check(&state) {
