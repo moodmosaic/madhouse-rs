@@ -68,6 +68,35 @@ impl State {
     }
 }
 
+pub struct ConstructorArgExampleCommand {
+    value: u64,
+}
+
+impl ConstructorArgExampleCommand {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+
+    pub fn build() -> impl Strategy<Value = CommandWrapper> {
+        (0u64..5).prop_map(|val| CommandWrapper::new(ConstructorArgExampleCommand::new(val)))
+    }
+}
+
+impl Command for ConstructorArgExampleCommand {
+    fn check(&self, _state: &State) -> bool {
+        true
+    }
+
+    fn apply(&self, state: &mut State) {
+        println!("Custom command with value: {}.", self.value);
+        state.last_mined_block += self.value;
+    }
+
+    fn label(&self) -> &'static str {
+        "CONSTRUCTOR"
+    }
+}
+
 /// A trait that all commands must implement.
 pub trait Command {
     fn check(&self, state: &State) -> bool;
@@ -85,6 +114,11 @@ impl StartMinerCommand {
         Self {
             miner_seed: miner_seed.to_vec(),
         }
+    }
+
+    pub fn build() -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(&MINER_SEEDS)
+            .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
 
@@ -114,6 +148,11 @@ impl SubmitBlockCommitCommand {
         Self {
             miner_seed: miner_seed.to_vec(),
         }
+    }
+
+    pub fn build() -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(&MINER_SEEDS)
+            .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
 
@@ -145,6 +184,12 @@ impl Command for SubmitBlockCommitCommand {
 }
 
 pub struct SortitionCommand;
+
+impl SortitionCommand {
+    pub fn build() -> impl Strategy<Value = CommandWrapper> {
+        Just(CommandWrapper::new(SortitionCommand))
+    }
+}
 
 impl Command for SortitionCommand {
     fn check(&self, state: &State) -> bool {
@@ -232,11 +277,10 @@ proptest! {
   fn stateful_test(
       commands in proptest::collection::vec(
           prop_oneof![
-              Just(CommandWrapper::new(SortitionCommand)),
-              proptest::sample::select(&MINER_SEEDS)
-              .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed))),
-              proptest::sample::select(&MINER_SEEDS)
-              .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed))),
+              SortitionCommand::build(),
+              StartMinerCommand::build(),
+              SubmitBlockCommitCommand::build(),
+              ConstructorArgExampleCommand::build(),
           ],
           1..16, // Change to something higher like 70.
       )
