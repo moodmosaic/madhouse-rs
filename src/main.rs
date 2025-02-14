@@ -305,3 +305,41 @@ proptest! {
       }
   }
 }
+
+#[test]
+fn hardcoded_sequence_test() {
+    let mut state = State::default();
+
+    // Start 2 miners.
+    let start_miner_1 = StartMinerCommand::new(&MINER_SEEDS[0]);
+    assert!(start_miner_1.check(&state));
+    start_miner_1.apply(&mut state);
+
+    let start_miner_2 = StartMinerCommand::new(&MINER_SEEDS[1]);
+    assert!(start_miner_2.check(&state));
+    start_miner_2.apply(&mut state);
+
+    // Submit block commit by miner 1.
+    let submit_block_commit_1 = SubmitBlockCommitCommand::new(&MINER_SEEDS[0]);
+    assert!(submit_block_commit_1.check(&state));
+    submit_block_commit_1.apply(&mut state);
+
+    // Submit block commit by miner 2.
+    let submit_block_commit_2 = SubmitBlockCommitCommand::new(&MINER_SEEDS[1]);
+    assert!(submit_block_commit_2.check(&state));
+    submit_block_commit_2.apply(&mut state);
+
+    // Sortition.
+    let sortition = SortitionCommand;
+    assert!(sortition.check(&state));
+    sortition.apply(&mut state);
+    assert!(state.block_leaders.contains_key(&1));
+    let leader = state.block_leaders.get(&1).unwrap();
+    assert!(leader == &MINER_SEEDS[0] || leader == &MINER_SEEDS[1]);
+
+    // Wait for 2 blocks.
+    let wait_for_blocks = WaitForBlocksCommand::new(2);
+    assert!(wait_for_blocks.check(&state));
+    wait_for_blocks.apply(&mut state);
+    assert_eq!(state.last_mined_block, 2);
+}
