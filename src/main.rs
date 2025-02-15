@@ -3,14 +3,12 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
+#[cfg(test)]
+use proptest::collection::vec;
 use proptest::prelude::{Just, Strategy};
-
 #[cfg(test)]
 use proptest::prop_oneof;
-#[cfg(test)]
-use proptest::strategy::ValueTree;
-#[cfg(test)]
-use proptest::test_runner::{Config, TestRunner};
+use proptest::proptest;
 
 fn main() {
     println!("Hello, world!");
@@ -286,50 +284,40 @@ impl Debug for CommandWrapper {
     }
 }
 
-#[test]
-fn stateful_test() {
-    let test_ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+proptest! {
+    #[test]
+    fn stateful_test(
+        commands in vec(
+            prop_oneof![
+              SortitionCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              StartMinerCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              SubmitBlockCommitCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              WaitForBlocksCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+            ],
+            1..16, // Adjust the range as needed
+        )
+    ) {
+      println!("\n=== New Test Run ===\n");
 
-    let commands_strategy = proptest::collection::vec(
-        prop_oneof![
-            SortitionCommand::build(&test_ctx),
-            StartMinerCommand::build(&test_ctx),
-            SubmitBlockCommitCommand::build(&test_ctx),
-            WaitForBlocksCommand::build(&test_ctx),
-        ],
-        1..16, // Change to something higher like 70.
-    );
+      let mut state = State::new();
+      let mut executed_commands = Vec::with_capacity(commands.len());
+      for cmd in &commands {
+          if cmd.command.check(&state) {
+              cmd.command.apply(&mut state);
+              executed_commands.push(cmd);
+          }
+      }
 
-    // This way of initializing the runner respects the command-line args, e.g.
-    // PROPTEST_CASES=1 cargo test -- --nocapture
-    let mut runner = TestRunner::new(Config::default());
+      println!("\nSelected commands:\n");
+      for command in &commands {
+        println!("{:?}", command);
+      }
 
-    let mut state = State::new();
-
-    for _ in 0..runner.config().cases {
-        println!("\n=== New Test Run ===\n");
-
-        let tree = commands_strategy.new_tree(&mut runner).unwrap();
-        let commands = tree.current();
-
-        let mut executed_commands = Vec::with_capacity(commands.len());
-
-        for cmd in &commands {
-            if cmd.command.check(&state) {
-                cmd.command.apply(&mut state);
-                executed_commands.push(cmd);
-            }
-        }
-
-        println!("\nSelected commands:\n");
-        for command in &commands {
-            println!("{:?}", command);
-        }
-        println!("\nExecuted commands:\n");
-        for command in &executed_commands {
-            println!("{:?}", command);
-        }
-    }
+      println!("\nExecuted commands:\n");
+      for command in &executed_commands {
+          println!("{:?}", command);
+      }
+  }
 }
 
 #[test]
