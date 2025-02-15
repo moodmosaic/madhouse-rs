@@ -301,7 +301,6 @@ proptest! {
     ) {
       println!("\n=== New Test Run ===\n");
       let mut state = State::default();
-
       let mut executed_commands = Vec::with_capacity(commands.len());
       for cmd in &commands {
           if cmd.command.check(&state) {
