@@ -8,14 +8,13 @@ use proptest::prelude::{Just, Strategy};
 use proptest::prop_oneof;
 use proptest::proptest;
 
-const MINER_SEEDS: [[u8; 4]; 2] = [[1, 1, 1, 1], [2, 2, 2, 2]];
-
 fn main() {
     println!("Hello, world!");
 }
 
 #[derive(Default)]
 pub struct State {
+    miner_seeds: Vec<Vec<u8>>,
     running_miners: HashSet<Vec<u8>>,
     last_mined_block: u64,
     block_commits: HashMap<u64, HashSet<Vec<u8>>>,
@@ -23,8 +22,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(miner_seeds: Vec<Vec<u8>>) -> Self {
         Self {
+            miner_seeds,
             last_mined_block: 0,
             ..Default::default()
         }
@@ -92,7 +92,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS"
     }
 
-    fn build() -> impl Strategy<Value = CommandWrapper> {
+    fn build(_state: &State) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -102,7 +102,7 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> &'static str;
-    fn build() -> impl Strategy<Value = CommandWrapper>
+    fn build(state: &State) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
 }
@@ -135,8 +135,8 @@ impl Command for StartMinerCommand {
         "START_MINER"
     }
 
-    fn build() -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(&MINER_SEEDS)
+    fn build(state: &State) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(state.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
@@ -180,8 +180,8 @@ impl Command for SubmitBlockCommitCommand {
         "SUBMIT_BLOCK_COMMIT"
     }
 
-    fn build() -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(&MINER_SEEDS)
+    fn build(state: &State) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(state.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
@@ -247,7 +247,7 @@ impl Command for SortitionCommand {
         "SORTITION"
     }
 
-    fn build() -> impl Strategy<Value = CommandWrapper> {
+    fn build(_state: &State) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -308,24 +308,25 @@ proptest! {
 
 #[test]
 fn hardcoded_sequence_test() {
-    let mut state = State::default();
+    let miner_seeds = vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]];
+    let mut state = State::new(miner_seeds.clone());
 
     // Start 2 miners.
-    let start_miner_1 = StartMinerCommand::new(&MINER_SEEDS[0]);
+    let start_miner_1 = StartMinerCommand::new(&state.miner_seeds[0]);
     assert!(start_miner_1.check(&state));
     start_miner_1.apply(&mut state);
 
-    let start_miner_2 = StartMinerCommand::new(&MINER_SEEDS[1]);
+    let start_miner_2 = StartMinerCommand::new(&state.miner_seeds[1]);
     assert!(start_miner_2.check(&state));
     start_miner_2.apply(&mut state);
 
     // Submit block commit by miner 1.
-    let submit_block_commit_1 = SubmitBlockCommitCommand::new(&MINER_SEEDS[0]);
+    let submit_block_commit_1 = SubmitBlockCommitCommand::new(&state.miner_seeds[0]);
     assert!(submit_block_commit_1.check(&state));
     submit_block_commit_1.apply(&mut state);
 
     // Submit block commit by miner 2.
-    let submit_block_commit_2 = SubmitBlockCommitCommand::new(&MINER_SEEDS[1]);
+    let submit_block_commit_2 = SubmitBlockCommitCommand::new(&state.miner_seeds[1]);
     assert!(submit_block_commit_2.check(&state));
     submit_block_commit_2.apply(&mut state);
 
@@ -335,7 +336,7 @@ fn hardcoded_sequence_test() {
     sortition.apply(&mut state);
     assert!(state.block_leaders.contains_key(&1));
     let leader = state.block_leaders.get(&1).unwrap();
-    assert!(leader == &MINER_SEEDS[0] || leader == &MINER_SEEDS[1]);
+    assert!(leader == &miner_seeds[0] || leader == &miner_seeds[1]);
 
     // Wait for 2 blocks.
     let wait_for_blocks = WaitForBlocksCommand::new(2);
