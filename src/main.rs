@@ -278,10 +278,10 @@ proptest! {
   fn stateful_test(
       commands in proptest::collection::vec(
           prop_oneof![
-              SortitionCommand::build(),
-              StartMinerCommand::build(),
-              SubmitBlockCommitCommand::build(),
-              WaitForBlocksCommand::build(),
+              SortitionCommand::build(&State::default()),
+              StartMinerCommand::build(&State::default()),
+              SubmitBlockCommitCommand::build(&State::default()),
+              WaitForBlocksCommand::build(&State::default()),
           ],
           1..16, // Change to something higher like 70.
       )
