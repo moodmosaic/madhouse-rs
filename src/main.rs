@@ -14,6 +14,7 @@ fn main() {
     println!("Hello, world!");
 }
 
+#[derive(Clone, Debug)]
 pub struct TestContext {
     miner_seeds: Vec<Vec<u8>>, // Immutable test setup data.
 }
@@ -103,7 +104,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS"
     }
 
-    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -113,7 +114,7 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> &'static str;
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper>
+    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
 }
@@ -146,8 +147,8 @@ impl Command for StartMinerCommand {
         "START_MINER"
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(ctx.miner_seeds.clone())
+    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds)
             .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
@@ -191,8 +192,8 @@ impl Command for SubmitBlockCommitCommand {
         "SUBMIT_BLOCK_COMMIT"
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(ctx.miner_seeds.clone())
+    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds)
             .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
@@ -258,7 +259,7 @@ impl Command for SortitionCommand {
         "SORTITION"
     }
 
-    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -287,15 +288,16 @@ impl Debug for CommandWrapper {
 proptest! {
     #[test]
     fn stateful_test(
-        commands in vec(
-            prop_oneof![
-              SortitionCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              StartMinerCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              SubmitBlockCommitCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              WaitForBlocksCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+        commands in Just(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]))
+            .prop_flat_map(|ctx| vec(
+                prop_oneof![
+                    SortitionCommand::build(ctx.clone()),
+                    StartMinerCommand::build(ctx.clone()),
+                    SubmitBlockCommitCommand::build(ctx.clone()),
+                    WaitForBlocksCommand::build(ctx.clone()),
             ],
             1..16, // Adjust the range as needed
-        )
+        ))
     ) {
       println!("\n=== New Test Run ===\n");
 
