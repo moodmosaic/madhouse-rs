@@ -1,13 +1,15 @@
-#![allow(unused)]
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 use proptest::prelude::{Just, Strategy};
+
+#[cfg(test)]
 use proptest::prop_oneof;
-use proptest::proptest;
+#[cfg(test)]
 use proptest::strategy::ValueTree;
+#[cfg(test)]
 use proptest::test_runner::{Config, TestRunner};
 
 fn main() {
@@ -18,6 +20,7 @@ pub struct TestContext {
     miner_seeds: Vec<Vec<u8>>, // Immutable test setup data
 }
 
+#[cfg(test)]
 impl TestContext {
     fn new(miner_seeds: Vec<Vec<u8>>) -> Self {
         Self { miner_seeds }
@@ -306,7 +309,7 @@ fn stateful_test() {
     for _ in 0..runner.config().cases {
         println!("\n=== New Test Run ===\n");
 
-        let mut tree = commands_strategy.new_tree(&mut runner).unwrap();
+        let tree = commands_strategy.new_tree(&mut runner).unwrap();
         let commands = tree.current();
 
         let mut executed_commands = Vec::with_capacity(commands.len());
