@@ -12,9 +12,18 @@ fn main() {
     println!("Hello, world!");
 }
 
+pub struct TestContext {
+    miner_seeds: Vec<Vec<u8>>, // Immutable test setup data
+}
+
+impl TestContext {
+    fn new(miner_seeds: Vec<Vec<u8>>) -> Self {
+        Self { miner_seeds }
+    }
+}
+
 #[derive(Default)]
 pub struct State {
-    miner_seeds: Vec<Vec<u8>>,
     running_miners: HashSet<Vec<u8>>,
     last_mined_block: u64,
     block_commits: HashMap<u64, HashSet<Vec<u8>>>,
@@ -22,9 +31,8 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(miner_seeds: Vec<Vec<u8>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            miner_seeds,
             last_mined_block: 0,
             ..Default::default()
         }
@@ -92,7 +100,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS"
     }
 
-    fn build(_state: &State) -> impl Strategy<Value = CommandWrapper> {
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -102,7 +110,7 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> &'static str;
-    fn build(state: &State) -> impl Strategy<Value = CommandWrapper>
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
 }
@@ -135,8 +143,8 @@ impl Command for StartMinerCommand {
         "START_MINER"
     }
 
-    fn build(state: &State) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(state.miner_seeds.clone())
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
@@ -180,8 +188,8 @@ impl Command for SubmitBlockCommitCommand {
         "SUBMIT_BLOCK_COMMIT"
     }
 
-    fn build(state: &State) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(state.miner_seeds.clone())
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
@@ -247,7 +255,7 @@ impl Command for SortitionCommand {
         "SORTITION"
     }
 
-    fn build(_state: &State) -> impl Strategy<Value = CommandWrapper> {
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -278,23 +286,28 @@ proptest! {
   fn stateful_test(
       commands in proptest::collection::vec(
           prop_oneof![
-              SortitionCommand::build(&State::default()),
-              StartMinerCommand::build(&State::default()),
-              SubmitBlockCommitCommand::build(&State::default()),
-              WaitForBlocksCommand::build(&State::default()),
+              SortitionCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              StartMinerCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              SubmitBlockCommitCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
+              WaitForBlocksCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
           ],
           1..16, // Change to something higher like 70.
       )
   ) {
       println!("\n=== New Test Run ===\n");
-      let mut state = State::default();
+
+      let test_ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+      let mut state = State::new();
+
       let mut executed_commands = Vec::with_capacity(commands.len());
+
       for cmd in &commands {
           if cmd.command.check(&state) {
               cmd.command.apply(&mut state);
               executed_commands.push(cmd);
           }
       }
+
       println!("\nSelected commands:\n");
       for command in &commands {
         println!("{:?}", command);
@@ -308,25 +321,28 @@ proptest! {
 
 #[test]
 fn hardcoded_sequence_test() {
-    let miner_seeds = vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]];
-    let mut state = State::new(miner_seeds.clone());
+    let test_ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+    let seed_1 = &test_ctx.miner_seeds[0];
+    let seed_2 = &test_ctx.miner_seeds[1];
+
+    let mut state = State::new();
 
     // Start 2 miners.
-    let start_miner_1 = StartMinerCommand::new(&state.miner_seeds[0]);
+    let start_miner_1 = StartMinerCommand::new(seed_1);
     assert!(start_miner_1.check(&state));
     start_miner_1.apply(&mut state);
 
-    let start_miner_2 = StartMinerCommand::new(&state.miner_seeds[1]);
+    let start_miner_2 = StartMinerCommand::new(seed_2);
     assert!(start_miner_2.check(&state));
     start_miner_2.apply(&mut state);
 
     // Submit block commit by miner 1.
-    let submit_block_commit_1 = SubmitBlockCommitCommand::new(&state.miner_seeds[0]);
+    let submit_block_commit_1 = SubmitBlockCommitCommand::new(seed_1);
     assert!(submit_block_commit_1.check(&state));
     submit_block_commit_1.apply(&mut state);
 
     // Submit block commit by miner 2.
-    let submit_block_commit_2 = SubmitBlockCommitCommand::new(&state.miner_seeds[1]);
+    let submit_block_commit_2 = SubmitBlockCommitCommand::new(seed_2);
     assert!(submit_block_commit_2.check(&state));
     submit_block_commit_2.apply(&mut state);
 
@@ -336,7 +352,7 @@ fn hardcoded_sequence_test() {
     sortition.apply(&mut state);
     assert!(state.block_leaders.contains_key(&1));
     let leader = state.block_leaders.get(&1).unwrap();
-    assert!(leader == &miner_seeds[0] || leader == &miner_seeds[1]);
+    assert!(leader == seed_1 || leader == seed_2);
 
     // Wait for 2 blocks.
     let wait_for_blocks = WaitForBlocksCommand::new(2);
