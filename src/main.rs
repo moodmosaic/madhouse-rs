@@ -7,6 +7,8 @@ use std::sync::Arc;
 use proptest::prelude::{Just, Strategy};
 use proptest::prop_oneof;
 use proptest::proptest;
+use proptest::strategy::ValueTree;
+use proptest::test_runner::{Config, TestRunner};
 
 fn main() {
     println!("Hello, world!");
@@ -100,7 +102,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS"
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -255,7 +257,7 @@ impl Command for SortitionCommand {
         "SORTITION"
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -281,42 +283,50 @@ impl Debug for CommandWrapper {
     }
 }
 
-proptest! {
-  #[test]
-  fn stateful_test(
-      commands in proptest::collection::vec(
-          prop_oneof![
-              SortitionCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              StartMinerCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              SubmitBlockCommitCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-              WaitForBlocksCommand::build(&TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]])),
-          ],
-          1..16, // Change to something higher like 70.
-      )
-  ) {
-      println!("\n=== New Test Run ===\n");
+#[test]
+fn stateful_test() {
+    let test_ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
 
-      let test_ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
-      let mut state = State::new();
+    let commands_strategy = proptest::collection::vec(
+        prop_oneof![
+            SortitionCommand::build(&test_ctx),
+            StartMinerCommand::build(&test_ctx),
+            SubmitBlockCommitCommand::build(&test_ctx),
+            WaitForBlocksCommand::build(&test_ctx),
+        ],
+        1..16, // Change to something higher like 70.
+    );
 
-      let mut executed_commands = Vec::with_capacity(commands.len());
+    // This way of initializing the runner respects the command-line args, e.g.
+    // PROPTEST_CASES=1 cargo test -- --nocapture
+    let mut runner = TestRunner::new(Config::default());
 
-      for cmd in &commands {
-          if cmd.command.check(&state) {
-              cmd.command.apply(&mut state);
-              executed_commands.push(cmd);
-          }
-      }
+    let mut state = State::new();
 
-      println!("\nSelected commands:\n");
-      for command in &commands {
-        println!("{:?}", command);
-      }
-      println!("\nExecuted commands:\n");
-      for command in &executed_commands {
-          println!("{:?}", command);
-      }
-  }
+    for _ in 0..runner.config().cases {
+        println!("\n=== New Test Run ===\n");
+
+        let mut tree = commands_strategy.new_tree(&mut runner).unwrap();
+        let commands = tree.current();
+
+        let mut executed_commands = Vec::with_capacity(commands.len());
+
+        for cmd in &commands {
+            if cmd.command.check(&state) {
+                cmd.command.apply(&mut state);
+                executed_commands.push(cmd);
+            }
+        }
+
+        println!("\nSelected commands:\n");
+        for command in &commands {
+            println!("{:?}", command);
+        }
+        println!("\nExecuted commands:\n");
+        for command in &executed_commands {
+            println!("{:?}", command);
+        }
+    }
 }
 
 #[test]
