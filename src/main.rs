@@ -17,7 +17,7 @@ fn main() {
 }
 
 pub struct TestContext {
-    miner_seeds: Vec<Vec<u8>>, // Immutable test setup data
+    miner_seeds: Vec<Vec<u8>>, // Immutable test setup data.
 }
 
 #[cfg(test)]
