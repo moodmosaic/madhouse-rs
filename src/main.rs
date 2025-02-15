@@ -296,12 +296,12 @@ proptest! {
                     SubmitBlockCommitCommand::build(ctx.clone()),
                     WaitForBlocksCommand::build(ctx.clone()),
             ],
-            1..16, // Adjust the range as needed
+            1..16, // Change to something higher like 70.
         ))
     ) {
       println!("\n=== New Test Run ===\n");
+      let mut state = State::default();
 
-      let mut state = State::new();
       let mut executed_commands = Vec::with_capacity(commands.len());
       for cmd in &commands {
           if cmd.command.check(&state) {
@@ -309,12 +309,10 @@ proptest! {
               executed_commands.push(cmd);
           }
       }
-
       println!("\nSelected commands:\n");
       for command in &commands {
         println!("{:?}", command);
       }
-
       println!("\nExecuted commands:\n");
       for command in &executed_commands {
           println!("{:?}", command);
@@ -328,7 +326,7 @@ fn hardcoded_sequence_test() {
     let seed_1 = &test_ctx.miner_seeds[0];
     let seed_2 = &test_ctx.miner_seeds[1];
 
-    let mut state = State::new();
+    let mut state = State::default();
 
     // Start 2 miners.
     let start_miner_1 = StartMinerCommand::new(seed_1);
