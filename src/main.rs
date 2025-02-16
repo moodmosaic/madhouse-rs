@@ -14,24 +14,26 @@ fn main() {
     println!("Hello, world!");
 }
 
+type MinerSeed = Vec<u8>;
+
 #[derive(Clone, Debug)]
 pub struct TestContext {
-    miner_seeds: Vec<Vec<u8>>, // Immutable test setup data.
+    miner_seeds: Vec<MinerSeed>, // Immutable test setup data.
 }
 
 #[cfg(test)]
 impl TestContext {
-    fn new(miner_seeds: Vec<Vec<u8>>) -> Self {
+    fn new(miner_seeds: Vec<MinerSeed>) -> Self {
         Self { miner_seeds }
     }
 }
 
 #[derive(Default)]
 pub struct State {
-    running_miners: HashSet<Vec<u8>>,
+    running_miners: HashSet<MinerSeed>,
     last_mined_block: u64,
-    block_commits: HashMap<u64, HashSet<Vec<u8>>>,
-    block_leaders: HashMap<u64, Vec<u8>>,
+    block_commits: HashMap<u64, HashSet<MinerSeed>>,
+    block_leaders: HashMap<u64, MinerSeed>,
 }
 
 impl State {
@@ -120,7 +122,7 @@ pub trait Command {
 }
 
 struct StartMinerCommand {
-    miner_seed: Vec<u8>,
+    miner_seed: MinerSeed,
 }
 
 impl StartMinerCommand {
@@ -154,7 +156,7 @@ impl Command for StartMinerCommand {
 }
 
 struct SubmitBlockCommitCommand {
-    miner_seed: Vec<u8>,
+    miner_seed: MinerSeed,
 }
 
 impl SubmitBlockCommitCommand {
@@ -229,7 +231,7 @@ impl Command for SortitionCommand {
             .expect("No commits found, but check() should have prevented this.")
             .clone();
 
-        let mut sorted_committers: Vec<Vec<u8>> =
+        let mut sorted_committers: Vec<MinerSeed> =
             block_commits_next_block.iter().cloned().collect();
 
         sorted_committers.sort();
