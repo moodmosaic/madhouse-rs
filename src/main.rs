@@ -110,8 +110,8 @@ impl Command for WaitForBlocksCommand {
         state.last_mined_block += self.count;
     }
 
-    fn label(&self) -> &'static str {
-        "WAIT_FOR_BLOCKS"
+    fn label(&self) -> String {
+        "WAIT_FOR_BLOCKS".to_string()
     }
 
     fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
@@ -123,7 +123,7 @@ impl Command for WaitForBlocksCommand {
 pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
-    fn label(&self) -> &'static str;
+    fn label(&self) -> String;
     fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
@@ -152,8 +152,8 @@ impl Command for StartMinerCommand {
         state.start_miner(&self.miner_seed);
     }
 
-    fn label(&self) -> &'static str {
-        "START_MINER"
+    fn label(&self) -> String {
+        format!("START_MINER({:?})", self.miner_seed)
     }
 
     fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
@@ -197,8 +197,8 @@ impl Command for SubmitBlockCommitCommand {
         state.add_block_commit(state.next_block_height(), &self.miner_seed);
     }
 
-    fn label(&self) -> &'static str {
-        "SUBMIT_BLOCK_COMMIT"
+    fn label(&self) -> String {
+        "SUBMIT_BLOCK_COMMIT".to_string()
     }
 
     fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
@@ -264,8 +264,8 @@ impl Command for SortitionCommand {
         state.add_sortition_block_leader(next_block_height, leader);
     }
 
-    fn label(&self) -> &'static str {
-        "SORTITION"
+    fn label(&self) -> String {
+        "SORTITION".to_string()
     }
 
     fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
