@@ -39,8 +39,10 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         Self {
+            running_miners: HashSet::new(),
             last_mined_block: 0,
-            ..Default::default()
+            block_commits: HashMap::new(),
+            block_leaders: HashMap::new(),
         }
     }
 
@@ -243,7 +245,7 @@ impl Command for SortitionCommand {
 
         sorted_committers.sort();
 
-        let mut hasher = DefaultHasher::default();
+        let mut hasher = DefaultHasher::new();
         next_block_height.hash(&mut hasher);
 
         for commit in &sorted_committers {
@@ -309,7 +311,7 @@ proptest! {
         ))
     ) {
       println!("\n=== New Test Run ===\n");
-      let mut state = State::default();
+      let mut state = State::new();
       let mut executed_commands = Vec::with_capacity(commands.len());
       for cmd in &commands {
           if cmd.command.check(&state) {
@@ -334,7 +336,7 @@ fn hardcoded_sequence_test() {
     let seed_1 = &test_ctx.miner_seeds[0];
     let seed_2 = &test_ctx.miner_seeds[1];
 
-    let mut state = State::default();
+    let mut state = State::new();
 
     // Start 2 miners.
     let start_miner_1 = StartMinerCommand::new(seed_1);
