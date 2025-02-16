@@ -44,6 +44,14 @@ impl State {
         }
     }
 
+    pub fn is_miner_running(&self, seed: &MinerSeed) -> bool {
+        self.running_miners.contains(seed)
+    }
+
+    pub fn next_block_height(&self) -> u64 {
+        self.last_mined_block + 1
+    }
+
     pub fn start_miner(&mut self, miner_seed: &[u8]) {
         self.running_miners.insert(miner_seed.to_vec());
         println!("Running miners: {:?}", self.running_miners);
@@ -137,11 +145,10 @@ impl StartMinerCommand {
 impl Command for StartMinerCommand {
     fn check(&self, state: &State) -> bool {
         // Prevents starting the same miner twice.
-        !state.running_miners.contains(&self.miner_seed)
+        !state.is_miner_running(&self.miner_seed)
     }
 
     fn apply(&self, state: &mut State) {
-        println!("Starting miner with seed: {:?}", self.miner_seed);
         state.start_miner(&self.miner_seed);
     }
 
@@ -173,10 +180,10 @@ impl Command for SubmitBlockCommitCommand {
         // A miner can submit a block commit only if:
         // 1. The miner is running.
         // 2. The miner has not submitted a block commit at the same height.
-        state.running_miners.contains(&self.miner_seed)
+        state.is_miner_running(&self.miner_seed)
             && !state
                 .block_commits
-                .get(&(state.last_mined_block + 1))
+                .get(&(state.next_block_height()))
                 .map(|commits| commits.contains(&self.miner_seed))
                 .unwrap_or(false)
     }
@@ -184,10 +191,10 @@ impl Command for SubmitBlockCommitCommand {
     fn apply(&self, state: &mut State) {
         println!(
             "Submitting block commit at height {} by miner {:?}",
-            state.last_mined_block + 1,
+            state.next_block_height(),
             self.miner_seed
         );
-        state.add_block_commit(state.last_mined_block + 1, &self.miner_seed);
+        state.add_block_commit(state.next_block_height(), &self.miner_seed);
     }
 
     fn label(&self) -> &'static str {
@@ -210,12 +217,12 @@ impl Command for SortitionCommand {
         // 2. The sortition has not happened yet for the upcoming block.
         state
             .block_commits
-            .get(&(state.last_mined_block + 1))
+            .get(&(state.next_block_height()))
             .map(|commits| !commits.is_empty())
             .unwrap_or(false)
             && !state
                 .block_leaders
-                .contains_key(&(state.last_mined_block + 1))
+                .contains_key(&(state.next_block_height()))
     }
 
     fn apply(&self, state: &mut State) {
@@ -223,7 +230,7 @@ impl Command for SortitionCommand {
         // that submitted a block commit. For deterministic leader selection,
         // we are hashing the height and the set of committers and then picking
         // the leader based on the hash value.
-        let next_block_height = state.last_mined_block + 1;
+        let next_block_height = state.next_block_height();
 
         let block_commits_next_block = state
             .block_commits
