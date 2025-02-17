@@ -196,7 +196,26 @@ impl Command for SubmitBlockCommitCommand {
             state.next_block_height(),
             self.miner_seed
         );
+
+        let block_commits_count_before = state
+            .block_commits
+            .get(&(state.next_block_height()))
+            .map(|commits| commits.len())
+            .unwrap_or(0);
+
         state.add_block_commit(state.next_block_height(), &self.miner_seed);
+
+        // This is the place where a general truth about the block commit
+        // should be checked. The following is just an example assertion. This
+        // can also check the state of the `SUT` (System Under Test) after the
+        // command is applied.
+        let block_commits_count_after = state
+            .block_commits
+            .get(&(state.next_block_height()))
+            .map(|commits| commits.len())
+            .unwrap_or(0);
+
+        assert_eq!(block_commits_count_after, block_commits_count_before + 1);
     }
 
     fn label(&self) -> String {
