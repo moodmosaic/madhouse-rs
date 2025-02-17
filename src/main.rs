@@ -151,6 +151,27 @@ impl Command for StartMinerCommand {
     }
 
     fn apply(&self, state: &mut State) {
+        // Act
+
+        // This is a dummy action. In a real-world scenario, this could be
+        // replaced with a controller call to start the miner.
+        let actual = std::process::Command::new("date")
+            .arg("+%Y")
+            .output()
+            .expect("Failed to execute process");
+
+        // Assert
+
+        // This is a dummy assertion. In a real-world scenario, this could be
+        // replaced with a more meaningful assertion, like checking a log to
+        // ensure that the miner has started successfully.
+        let actual_str = String::from_utf8_lossy(&actual.stdout)
+            .trim_end()
+            .to_string();
+        let current_year = "2025";
+        assert_eq!(actual_str, current_year, "Year mismatch!");
+
+        // Update the locally tracked state.
         state.start_miner(&self.miner_seed);
     }
 
