@@ -18,7 +18,7 @@ type MinerSeed = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct TestContext {
-    miner_seeds: Vec<MinerSeed>, // Immutable test setup data.
+    miner_seeds: Vec<MinerSeed>,
 }
 
 #[cfg(test)]
@@ -116,7 +116,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS".to_string()
     }
 
-    fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -126,7 +126,7 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> String;
-    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper>
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
 }
@@ -179,8 +179,8 @@ impl Command for StartMinerCommand {
         format!("START_MINER({:?})", self.miner_seed)
     }
 
-    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(ctx.miner_seeds)
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
 }
@@ -243,8 +243,8 @@ impl Command for SubmitBlockCommitCommand {
         "SUBMIT_BLOCK_COMMIT".to_string()
     }
 
-    fn build(ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
-        proptest::sample::select(ctx.miner_seeds)
+    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
 }
@@ -310,7 +310,7 @@ impl Command for SortitionCommand {
         "SORTITION".to_string()
     }
 
-    fn build(_ctx: TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -336,38 +336,45 @@ impl Debug for CommandWrapper {
     }
 }
 
-proptest! {
-    #[test]
-    fn stateful_test(
-        commands in Just(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]))
-            .prop_flat_map(|ctx| vec(
-                prop_oneof![
-                    SortitionCommand::build(ctx.clone()),
-                    StartMinerCommand::build(ctx.clone()),
-                    SubmitBlockCommitCommand::build(ctx.clone()),
-                    WaitForBlocksCommand::build(ctx.clone()),
-            ],
-            1..16, // Change to something higher like 70.
-        ))
-    ) {
-      println!("\n=== New Test Run ===\n");
-      let mut state = State::new();
-      let mut executed_commands = Vec::with_capacity(commands.len());
-      for cmd in &commands {
-          if cmd.command.check(&state) {
-              cmd.command.apply(&mut state);
-              executed_commands.push(cmd);
-          }
-      }
-      println!("\nSelected commands:\n");
-      for command in &commands {
-        println!("{:?}", command);
-      }
-      println!("\nExecuted commands:\n");
-      for command in &executed_commands {
-          println!("{:?}", command);
-      }
-  }
+#[test]
+fn stateful_test() {
+    let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+
+    let mut config = proptest::test_runner::Config::default();
+    config.cases = 1;
+
+    proptest!(config, |(commands in vec(
+        prop_oneof![
+            SortitionCommand::build(&test_context),
+            StartMinerCommand::build(&test_context),
+            SubmitBlockCommitCommand::build(&test_context),
+            WaitForBlocksCommand::build(&test_context),
+        ],
+        1..16,
+    ))| {
+        println!("\n=== New Test Run (manual) ===\n");
+
+        let mut state = State::new();
+
+        let mut executed_commands = Vec::with_capacity(commands.len());
+
+        for cmd in &commands {
+            if cmd.command.check(&state) {
+                cmd.command.apply(&mut state);
+                executed_commands.push(cmd);
+            }
+        }
+
+        println!("\nSelected commands:\n");
+        for command in &commands {
+            println!("{:?}", command);
+        }
+
+        println!("\nExecuted commands:\n");
+        for command in &executed_commands {
+            println!("{:?}", command);
+        }
+    });
 }
 
 #[test]
@@ -410,4 +417,57 @@ fn hardcoded_sequence_test() {
     assert!(wait_for_blocks.check(&state));
     wait_for_blocks.apply(&mut state);
     assert_eq!(state.last_mined_block, 2);
+}
+
+macro_rules! madhouse {
+    ($test_context:expr, [ $( $command:ident ),* ], $min:expr, $max:expr) => {
+        let mut config = proptest::test_runner::Config::default();
+        config.cases = 1;
+
+        proptest!(config, |(commands in vec(
+            prop_oneof![
+                $( $command::build(&$test_context), )*
+            ],
+            $min..$max,
+        ))| {
+            println!("\n=== New Test Run (macro) ===\n");
+
+            let mut state = State::new();
+            let mut executed_commands = Vec::with_capacity(commands.len());
+
+            for cmd in &commands {
+                if cmd.command.check(&state) {
+                    cmd.command.apply(&mut state);
+                    executed_commands.push(cmd);
+                }
+            }
+
+            println!("\nSelected commands:\n");
+            for command in &commands {
+                println!("{:?}", command);
+            }
+
+            println!("\nExecuted commands:\n");
+            for command in &executed_commands {
+                println!("{:?}", command);
+            }
+        });
+    };
+}
+
+#[test]
+fn macro_stateful_test() {
+    let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+
+    madhouse!(
+        test_context,
+        [
+            StartMinerCommand,
+            SubmitBlockCommitCommand,
+            SortitionCommand,
+            WaitForBlocksCommand
+        ],
+        1,  // Min
+        16  // Max
+    );
 }
