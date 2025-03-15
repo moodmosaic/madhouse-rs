@@ -8,6 +8,7 @@ use proptest::collection::vec;
 use proptest::prelude::{Just, Strategy};
 #[cfg(test)]
 use proptest::prop_oneof;
+#[cfg(test)]
 use proptest::proptest;
 
 fn main() {
@@ -340,8 +341,7 @@ impl Debug for CommandWrapper {
 fn stateful_test() {
     let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
 
-    let mut config = proptest::test_runner::Config::default();
-    config.cases = 1;
+    let config = proptest::test_runner::Config { cases: 1, ..Default::default() };
 
     proptest!(config, |(commands in vec(
         prop_oneof![
@@ -419,10 +419,10 @@ fn hardcoded_sequence_test() {
     assert_eq!(state.last_mined_block, 2);
 }
 
+#[cfg(test)]
 macro_rules! madhouse {
     ($test_context:expr, [ $( $command:ident ),* ], $min:expr, $max:expr) => {
-        let mut config = proptest::test_runner::Config::default();
-        config.cases = 1;
+        let config = proptest::test_runner::Config { cases: 1, ..Default::default() };
 
         proptest!(config, |(commands in vec(
             prop_oneof![
