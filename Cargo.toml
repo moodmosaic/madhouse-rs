@@ -1,7 +1,11 @@
 [package]
-name = "madhouse-rs-blueprint"
+name = "madhouse"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 proptest = "1.6.0"
+
+[[example]]
+name = "integration"
+path = "examples/integration.rs"
