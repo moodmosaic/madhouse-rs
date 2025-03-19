@@ -1,9 +1,21 @@
 use madhouse::{madhouse, Command, CommandWrapper, State, TestContext};
 use proptest::prelude::{Just, Strategy};
+use proptest::strategy::ValueTree;
+use std::env;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 fn main() {
-    println!("Running example...");
+    println!("Running integration example...");
+
+    // Check if we're in random or deterministic mode.
+    let mode = if env::var("MADHOUSE").map(|v| v == "1").unwrap_or(false) {
+        "RANDOM"
+    } else {
+        "DETERMINISTIC"
+    };
+
+    println!("Execution mode: {}", mode);
+
     let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
 
     madhouse!(
@@ -14,8 +26,8 @@ fn main() {
             SortitionCommand,
             WaitForBlocksCommand
         ],
-        1, // Min.
-        8  // Max.
+        4,  // Min - one of each command type
+        12  // Max
     );
 }
 
@@ -185,6 +197,76 @@ impl Command for SortitionCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+
+    #[test]
+    fn test_deterministic_execution() {
+        // Ensure we're in deterministic mode.
+        env::remove_var("MADHOUSE");
+
+        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+
+        // This should execute deterministically
+        let mut state = State::new();
+        let mut test_runner = proptest::test_runner::TestRunner::default();
+        let mut commands = Vec::new();
+
+        // Manually create the same sequence the macro would in deterministic mode
+        let strategy1 = StartMinerCommand::build(&ctx);
+        if let Ok(value) = strategy1.new_tree(&mut test_runner).map(|v| v.current()) {
+            commands.push(value);
+        }
+
+        let strategy2 = SubmitBlockCommitCommand::build(&ctx);
+        if let Ok(value) = strategy2.new_tree(&mut test_runner).map(|v| v.current()) {
+            commands.push(value);
+        }
+
+        let strategy3 = SortitionCommand::build(&ctx);
+        if let Ok(value) = strategy3.new_tree(&mut test_runner).map(|v| v.current()) {
+            commands.push(value);
+        }
+
+        let strategy4 = WaitForBlocksCommand::build(&ctx);
+        if let Ok(value) = strategy4.new_tree(&mut test_runner).map(|v| v.current()) {
+            commands.push(value);
+        }
+
+        // Execute the commands manually
+        let mut executed = Vec::new();
+        for cmd in &commands {
+            if cmd.command.check(&state) {
+                cmd.command.apply(&mut state);
+                executed.push(cmd);
+            }
+        }
+
+        // Verify that at least some commands executed (exact count depends on preconditions)
+        assert!(!executed.is_empty());
+    }
+
+    #[test]
+    fn test_random_execution() {
+        // Force random mode.
+        env::set_var("MADHOUSE", "1");
+
+        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+
+        madhouse!(
+            ctx,
+            [
+                StartMinerCommand,
+                SubmitBlockCommitCommand,
+                SortitionCommand,
+                WaitForBlocksCommand
+            ],
+            4,
+            8
+        );
+
+        // Reset environment for other tests
+        env::remove_var("MADHOUSE");
+    }
 
     #[test]
     fn stateful_test() {

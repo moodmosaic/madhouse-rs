@@ -49,6 +49,7 @@
 //! ```rust
 //! use madhouse::{Command, CommandWrapper, State, TestContext, madhouse};
 //! use proptest::prelude::{Just, Strategy};
+//! use proptest::strategy::ValueTree;
 //!
 //! struct IncrementCommand;
 //!
@@ -157,29 +158,97 @@ impl Debug for CommandWrapper {
     }
 }
 
+// Function to execute commands and return the executed ones
+pub fn execute_commands<'a>(
+    commands: &'a [CommandWrapper],
+    state: &mut State,
+) -> Vec<&'a CommandWrapper> {
+    let mut executed = Vec::with_capacity(commands.len());
+
+    for cmd in commands {
+        if cmd.command.check(state) {
+            cmd.command.apply(state);
+            executed.push(cmd);
+        }
+    }
+
+    executed
+}
+
 /// Macro for running stateful tests.
+///
+/// By default, commands are executed deterministically in the order they are passed.
+/// If the MADHOUSE=1 environment variable is set, commands are executed randomly.
+///
+/// # Arguments
+///
+/// * `test_context` - The test context to use for generating commands.
+/// * `[command1, command2, ...]` - The command types to use for generating commands.
+/// * `min` - The minimum number of commands to generate.
+/// * `max` - The maximum number of commands to generate.
 #[macro_export]
 macro_rules! madhouse {
     ($test_context:expr, [ $( $command:ident ),* ], $min:expr, $max:expr) => {
-        let config = proptest::test_runner::Config { cases: 1, ..Default::default() };
+        let use_random = std::env::var("MADHOUSE").map(|v| v == "1").unwrap_or(false);
 
-        proptest::proptest!(config, |(commands in proptest::collection::vec(
-            proptest::prop_oneof![ $( $command::build(&$test_context), )* ],
-            $min..$max,
-        ))| {
-            let mut state = $crate::State::new();
-            let mut executed = Vec::with_capacity(commands.len());
+        if use_random {
+            // Random execution mode with shared state
+            let shared_state = std::sync::Arc::new(std::sync::Mutex::new($crate::State::new()));
+            let config = proptest::test_runner::Config {
+                cases: 256, // Default to 256 cases for thorough testing
+                ..Default::default()
+            };
 
-            for cmd in &commands {
-                if cmd.command.check(&state) {
-                    cmd.command.apply(&mut state);
-                    executed.push(cmd);
-                }
+            proptest::proptest!(config, |(commands in proptest::collection::vec(
+                proptest::prop_oneof![ $( $command::build(&$test_context), )* ],
+                $min..$max,
+            ))| {
+                // Get mutable access to the shared state
+                let mut state = shared_state.lock().unwrap();
+                let executed = $crate::execute_commands(&commands, &mut *state);
+
+                println!("Random Commands: {:?}", commands);
+                println!("Executed: {:?}", executed);
+
+                // Release the lock
+                drop(state);
+            });
+        } else {
+            // Deterministic execution mode
+            let mut test_runner = proptest::test_runner::TestRunner::default();
+            let mut commands = Vec::new();
+
+            // Generate commands in sequence, cycling through command types
+            let command_types = vec![ $( stringify!($command), )* ];
+            let mut type_index = 0;
+            let mut attempts = 0;
+
+            while commands.len() < $min && attempts < 100 {
+                let command_name = command_types[type_index];
+
+                // Generate the command based on its type
+                $(
+                    if command_name == stringify!($command) {
+                        let strategy = $command::build(&$test_context);
+                        if let Ok(value) = strategy.new_tree(&mut test_runner).map(|v| v.current()) {
+                            if commands.len() < $max {
+                                commands.push(value);
+                            }
+                        }
+                    }
+                )*
+
+                // Move to next command type
+                type_index = (type_index + 1) % command_types.len();
+                attempts += 1;
             }
 
-            println!("Commands: {:?}", commands);
+            let mut state = $crate::State::new();
+            let executed = $crate::execute_commands(&commands, &mut state);
+
+            println!("Deterministic Commands: {:?}", commands);
             println!("Executed: {:?}", executed);
-        });
+        }
     };
 }
 
@@ -242,5 +311,67 @@ mod tests {
         let miner_seeds = vec![vec![1, 2, 3], vec![4, 5, 6]];
         let ctx = TestContext::new(miner_seeds.clone());
         assert_eq!(ctx.miner_seeds, miner_seeds);
+    }
+}
+
+#[cfg(test)]
+mod macro_tests {
+    use super::*;
+    use proptest::prelude::Just;
+    use proptest::strategy::ValueTree;
+    use std::env;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    // Simple test command that increments block count
+    struct IncrementCommand;
+
+    impl Command for IncrementCommand {
+        fn check(&self, _state: &State) -> bool {
+            true
+        }
+        fn apply(&self, state: &mut State) {
+            state.last_mined_block += 1;
+        }
+        fn label(&self) -> String {
+            "INCREMENT".to_string()
+        }
+        fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+            Just(CommandWrapper::new(IncrementCommand))
+        }
+    }
+
+    #[test]
+    fn test_deterministic_mode() {
+        // Ensure MADHOUSE is not set
+        env::remove_var("MADHOUSE");
+
+        let ctx = TestContext::new(vec![]);
+        madhouse!(ctx, [IncrementCommand], 3, 5);
+        // This test simply verifies the macro runs without errors in deterministic mode
+    }
+
+    #[test]
+    fn test_shared_state_persistence() {
+        // Test that a shared state properly accumulates changes across runs
+        let shared_state = Arc::new(Mutex::new(State::new()));
+
+        // Multiple runs, using the same state
+        for i in 0..3 {
+            // Create commands for this run
+            let cmd1 = CommandWrapper::new(IncrementCommand);
+            let cmd2 = CommandWrapper::new(IncrementCommand);
+            let commands = vec![cmd1, cmd2]; // Two commands per run
+
+            // Execute with the shared state
+            let mut state = shared_state.lock().unwrap();
+            execute_commands(&commands, &mut state);
+
+            // Verify cumulative changes
+            assert_eq!(state.last_mined_block, (i + 1) * 2);
+        }
+
+        // Final verification - state persisted across all runs
+        assert_eq!(shared_state.lock().unwrap().last_mined_block, 6);
     }
 }
