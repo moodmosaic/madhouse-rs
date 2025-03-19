@@ -1,4 +1,4 @@
-use madhouse::{madhouse, Command, CommandWrapper, State, TestContext};
+use madhouse::{scenario, Command, CommandWrapper, State, TestContext};
 use proptest::prelude::{Just, Strategy};
 use proptest::strategy::ValueTree;
 use std::env;
@@ -18,16 +18,14 @@ fn main() {
 
     let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
 
-    madhouse!(
+    scenario!(
         test_context,
         [
             StartMinerCommand,
             SubmitBlockCommitCommand,
             SortitionCommand,
             WaitForBlocksCommand
-        ],
-        4,  // Min - one of each command type
-        12  // Max
+        ]
     );
 }
 
@@ -232,7 +230,7 @@ mod tests {
             commands.push(value);
         }
 
-        // Execute the commands manually
+        // Execute the commands manually.
         let mut executed = Vec::new();
         for cmd in &commands {
             if cmd.command.check(&state) {
@@ -252,16 +250,14 @@ mod tests {
 
         let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
 
-        madhouse!(
+        scenario!(
             ctx,
             [
                 StartMinerCommand,
                 SubmitBlockCommitCommand,
                 SortitionCommand,
                 WaitForBlocksCommand
-            ],
-            4,
-            8
+            ]
         );
 
         // Reset environment for other tests
@@ -273,6 +269,9 @@ mod tests {
         let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
         let config = proptest::test_runner::Config {
             cases: 1,
+            failure_persistence: Some(Box::new(
+                proptest::test_runner::FileFailurePersistence::WithSource("integration"),
+            )),
             ..Default::default()
         };
 
@@ -296,8 +295,15 @@ mod tests {
                 }
             }
 
-            println!("\nSelected commands:\n{:?}", commands);
-            println!("\nExecuted commands:\n{:?}", executed);
+            println!("Selected:");
+            for (i, cmd) in commands.iter().enumerate() {
+                println!("{:02}. {}", i + 1, cmd.command.label());
+            }
+
+            println!("Executed:");
+            for (i, cmd) in executed.iter().enumerate() {
+                println!("{:02}. {}", i + 1, cmd.command.label());
+            }
         });
     }
 
@@ -341,16 +347,14 @@ mod tests {
     #[test]
     fn macro_stateful_test() {
         let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
-        madhouse!(
+        scenario!(
             ctx,
             [
                 StartMinerCommand,
                 SubmitBlockCommitCommand,
                 SortitionCommand,
                 WaitForBlocksCommand
-            ],
-            1,
-            16
+            ]
         );
     }
 }

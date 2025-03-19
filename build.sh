@@ -15,7 +15,7 @@ dpkg -s libssl-dev >/dev/null 2>&1 || need libssl-dev libssl-dev
 rustup component add rustfmt -- --quiet 2>/dev/null || true
 command -v cargo-tarpaulin >/dev/null || cargo install cargo-tarpaulin
 
-cargo fmt --all -- --check || cargo fmt --all
+cargo fmt --all
 cargo check --all-targets
 cargo clippy --all-targets
 cargo build --all-targets
