@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-proptest = "1.6.0"
+proptest = { git = "https://github.com/proptest-rs/proptest.git", rev = "c9bdf18c232665b2b740c667c81866b598d06dc7" }
 
 [[example]]
 name = "integration"
