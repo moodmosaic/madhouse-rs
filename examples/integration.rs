@@ -1,8 +1,8 @@
-use madhouse::{scenario, Command, CommandWrapper, State, TestContext};
+use madhouse::{prop_allof, scenario, Command, CommandWrapper, State, TestContext};
 use proptest::prelude::{Just, Strategy};
-use proptest::strategy::ValueTree;
 use std::env;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 fn main() {
     println!("Running integration example...");
@@ -16,17 +16,15 @@ fn main() {
 
     println!("Execution mode: {}", mode);
 
-    let test_context = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+    let test_context = Arc::new(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]));
 
-    scenario!(
+    scenario![
         test_context,
-        [
-            StartMinerCommand,
-            SubmitBlockCommitCommand,
-            SortitionCommand,
-            WaitForBlocksCommand
-        ]
-    );
+        StartMinerCommand,
+        SubmitBlockCommitCommand,
+        SortitionCommand,
+        WaitForBlocksCommand
+    ]
 }
 
 struct WaitForBlocksCommand {
@@ -53,7 +51,7 @@ impl Command for WaitForBlocksCommand {
         "WAIT_FOR_BLOCKS".to_string()
     }
 
-    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
         (1u64..5).prop_map(|val| CommandWrapper::new(WaitForBlocksCommand::new(val)))
     }
 }
@@ -84,7 +82,7 @@ impl Command for StartMinerCommand {
         format!("START_MINER({:?})", self.miner_seed)
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
         proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(StartMinerCommand::new(&seed)))
     }
@@ -141,7 +139,7 @@ impl Command for SubmitBlockCommitCommand {
         "SUBMIT_BLOCK_COMMIT".to_string()
     }
 
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
         proptest::sample::select(ctx.miner_seeds.clone())
             .prop_map(|seed| CommandWrapper::new(SubmitBlockCommitCommand::new(&seed)))
     }
@@ -187,7 +185,7 @@ impl Command for SortitionCommand {
         "SORTITION".to_string()
     }
 
-    fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+    fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
         Just(CommandWrapper::new(SortitionCommand))
     }
 }
@@ -198,77 +196,30 @@ mod tests {
     use std::env;
 
     #[test]
-    fn test_deterministic_execution() {
-        // Ensure we're in deterministic mode.
-        env::remove_var("MADHOUSE");
-
-        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
-
-        // This should execute deterministically
-        let mut state = State::new();
-        let mut test_runner = proptest::test_runner::TestRunner::default();
-        let mut commands = Vec::new();
-
-        // Manually create the same sequence the macro would in deterministic mode
-        let strategy1 = StartMinerCommand::build(&ctx);
-        if let Ok(value) = strategy1.new_tree(&mut test_runner).map(|v| v.current()) {
-            commands.push(value);
-        }
-
-        let strategy2 = SubmitBlockCommitCommand::build(&ctx);
-        if let Ok(value) = strategy2.new_tree(&mut test_runner).map(|v| v.current()) {
-            commands.push(value);
-        }
-
-        let strategy3 = SortitionCommand::build(&ctx);
-        if let Ok(value) = strategy3.new_tree(&mut test_runner).map(|v| v.current()) {
-            commands.push(value);
-        }
-
-        let strategy4 = WaitForBlocksCommand::build(&ctx);
-        if let Ok(value) = strategy4.new_tree(&mut test_runner).map(|v| v.current()) {
-            commands.push(value);
-        }
-
-        // Execute the commands manually.
-        let mut executed = Vec::new();
-        for cmd in &commands {
-            if cmd.command.check(&state) {
-                cmd.command.apply(&mut state);
-                executed.push(cmd);
-            }
-        }
-
-        // Verify that at least some commands executed (exact count depends on preconditions)
-        assert!(!executed.is_empty());
-    }
-
-    #[test]
     fn test_random_execution() {
         // Force random mode.
         env::set_var("MADHOUSE", "1");
 
-        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+        let ctx = Arc::new(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]));
 
-        scenario!(
+        scenario![
             ctx,
-            [
-                StartMinerCommand,
-                SubmitBlockCommitCommand,
-                SortitionCommand,
-                WaitForBlocksCommand
-            ]
-        );
+            StartMinerCommand,
+            SubmitBlockCommitCommand,
+            SortitionCommand,
+            WaitForBlocksCommand
+        ];
 
-        // Reset environment for other tests
+        // Reset environment for other tests.
         env::remove_var("MADHOUSE");
     }
 
     #[test]
     fn stateful_test() {
-        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+        let ctx = Arc::new(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]));
         let config = proptest::test_runner::Config {
             cases: 1,
+            max_shrink_iters: 0,
             failure_persistence: Some(Box::new(
                 proptest::test_runner::FileFailurePersistence::WithSource("integration"),
             )),
@@ -277,10 +228,10 @@ mod tests {
 
         proptest::proptest!(config, |(commands in proptest::collection::vec(
             proptest::prop_oneof![
-                SortitionCommand::build(&ctx),
-                StartMinerCommand::build(&ctx),
-                SubmitBlockCommitCommand::build(&ctx),
-                WaitForBlocksCommand::build(&ctx),
+                SortitionCommand::build(ctx.clone()),
+                StartMinerCommand::build(ctx.clone()),
+                SubmitBlockCommitCommand::build(ctx.clone()),
+                WaitForBlocksCommand::build(ctx.clone()),
             ],
             1..16,
         ))| {
@@ -309,7 +260,7 @@ mod tests {
 
     #[test]
     fn hardcoded_sequence_test() {
-        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
+        let ctx = Arc::new(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]));
         let (seed1, seed2) = (&ctx.miner_seeds[0], &ctx.miner_seeds[1]);
 
         let mut state = State::new();
@@ -346,15 +297,13 @@ mod tests {
 
     #[test]
     fn macro_stateful_test() {
-        let ctx = TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]);
-        scenario!(
+        let ctx = Arc::new(TestContext::new(vec![vec![1, 1, 1, 1], vec![2, 2, 2, 2]]));
+        scenario![
             ctx,
-            [
-                StartMinerCommand,
-                SubmitBlockCommitCommand,
-                SortitionCommand,
-                WaitForBlocksCommand
-            ]
-        );
+            StartMinerCommand,
+            SubmitBlockCommitCommand,
+            SortitionCommand,
+            WaitForBlocksCommand
+        ];
     }
 }
