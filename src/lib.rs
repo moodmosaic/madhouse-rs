@@ -47,9 +47,11 @@
 //! ## Example
 //!
 //! ```rust
-//! use madhouse::{Command, CommandWrapper, State, TestContext, scenario};
+//! use madhouse::{prop_allof, Command, CommandWrapper, State, TestContext, scenario};
 //! use proptest::prelude::{Just, Strategy};
 //! use proptest::strategy::ValueTree;
+//! use std::env;
+//! use std::sync::Arc;
 //!
 //! struct IncrementCommand;
 //!
@@ -57,14 +59,14 @@
 //!     fn check(&self, _state: &State) -> bool { true }
 //!     fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
 //!     fn label(&self) -> String { "INCREMENT".to_string() }
-//!     fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+//!     fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
 //!         Just(CommandWrapper::new(IncrementCommand))
 //!     }
 //! }
 //!
-//! let test_context = TestContext::new(vec![]);
+//! let test_context = Arc::new(TestContext::new(vec![]));
 //!
-//! scenario!(test_context, [IncrementCommand]);
+//! scenario! [test_context, IncrementCommand];
 //! ```
 
 use proptest::prelude::Strategy;
@@ -134,7 +136,7 @@ pub trait Command {
     fn check(&self, state: &State) -> bool;
     fn apply(&self, state: &mut State);
     fn label(&self) -> String;
-    fn build(ctx: &TestContext) -> impl Strategy<Value = CommandWrapper>
+    fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper>
     where
         Self: Sized;
 }
@@ -157,6 +159,30 @@ impl Debug for CommandWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.command.label())
     }
+}
+
+/// Creates a strategy that always returns a Vec containing values from all the
+/// provided strategies, in the exact order they were passed.
+///
+/// This is similar to `prop_oneof` but instead of randomly picking strategies,
+/// it includes values from all strategies in a Vec.
+#[macro_export]
+macro_rules! prop_allof {
+    ($strat:expr $(,)?) => {
+        $strat.prop_map(|val| vec![val])
+    };
+
+    ($first:expr, $($rest:expr),+ $(,)?) => {
+        {
+            let first_strat = $first.prop_map(|val| vec![val]);
+            let rest_strat = prop_allof!($($rest),+);
+
+            (first_strat, rest_strat).prop_map(|(mut first_vec, rest_vec)| {
+                first_vec.extend(rest_vec);
+                first_vec
+            })
+        }
+    };
 }
 
 // Function to execute commands and return the executed ones.
@@ -211,42 +237,69 @@ pub fn execute_commands<'a>(
 /// # Arguments
 ///
 /// * `test_context` - The test context to use for creating commands.
-/// * `[command1, command2, ...]` - The actual command types to test.
+/// * `command1, command2, ...` - The actual command objects to test.
 #[macro_export]
 macro_rules! scenario {
-    ($test_context:expr, [ $( $command:ident ),* ]) => {
-        let config = proptest::test_runner::Config {
-            cases: 1,
-            failure_persistence: Some(Box::new(
-                proptest::test_runner::FileFailurePersistence::WithSource("scenario"),
-            )),
-            ..Default::default()
-        };
+    ($test_context:expr, $($cmd_type:ident),+ $(,)?) => {
+        {
+            let test_context = $test_context.clone();
+            let config = proptest::test_runner::Config {
+                cases: 1,
+                max_shrink_iters: 0,
+                ..Default::default()
+            };
 
-        if std::env::var("MADHOUSE").map(|v| v == "1").unwrap_or(false) {
-            // Random execution
-            let shared_state = std::sync::Arc::new(std::sync::Mutex::new($crate::State::new()));
-            proptest::proptest!(config, |(commands in proptest::collection::vec(
-                proptest::prop_oneof![ $( $command::build(&$test_context), )* ],
-                1..100
-            ))| {
-                let mut state = shared_state.lock().unwrap();
-                $crate::execute_commands(&commands, &mut *state);
-            });
-        } else {
-            // Deterministic execution
-            let mut test_runner = proptest::test_runner::TestRunner::new(config);
-            let mut commands = Vec::new();
+            // Use MADHOUSE env var to determine test mode.
+            let use_madhouse = env::var("MADHOUSE") == Ok("1".into());
 
-            // Generate exactly one of each command in the order specified
-            $(
-                if let Ok(value) = $command::build(&$test_context).new_tree(&mut test_runner).map(|v| v.current()) {
-                    commands.push(value);
-                }
-            )*
-
-            let mut state = $crate::State::new();
-            $crate::execute_commands(&commands, &mut state);
+            if use_madhouse {
+                proptest::proptest!(config, |(commands in proptest::collection::vec(
+                    proptest::prop_oneof![
+                        $($cmd_type::build(test_context.clone())),+
+                    ],
+                    1..16,
+                ))| {
+                    println!("\n=== New Test Run (MADHOUSE mode) ===\n");
+                    let mut state = State::new();
+                    let mut executed = Vec::with_capacity(commands.len());
+                    for cmd in &commands {
+                        if cmd.command.check(&state) {
+                            cmd.command.apply(&mut state);
+                            executed.push(cmd);
+                        }
+                    }
+                    println!("Selected:");
+                    for (i, cmd) in commands.iter().enumerate() {
+                        println!("{:02}. {}", i + 1, cmd.command.label());
+                    }
+                    println!("Executed:");
+                    for (i, cmd) in executed.iter().enumerate() {
+                        println!("{:02}. {}", i + 1, cmd.command.label());
+                    }
+                });
+            } else {
+                proptest::proptest!(config, |(commands in prop_allof![
+                    $($cmd_type::build(test_context.clone())),+
+                ])| {
+                    println!("\n=== New Test Run (deterministic mode) ===\n");
+                    let mut state = State::new();
+                    let mut executed = Vec::with_capacity(commands.len());
+                    for cmd in &commands {
+                        if cmd.command.check(&state) {
+                            cmd.command.apply(&mut state);
+                            executed.push(cmd);
+                        }
+                    }
+                    println!("Selected:");
+                    for (i, cmd) in commands.iter().enumerate() {
+                        println!("{:02}. {}", i + 1, cmd.command.label());
+                    }
+                    println!("Executed:");
+                    for (i, cmd) in executed.iter().enumerate() {
+                        println!("{:02}. {}", i + 1, cmd.command.label());
+                    }
+                });
+            }
         }
     };
 }
@@ -273,7 +326,7 @@ mod tests {
             format!("TEST({})", self.value)
         }
 
-        fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
             Just(CommandWrapper::new(TestCommand { value: 1 }))
         }
     }
@@ -321,7 +374,6 @@ mod tests {
 mod macro_tests {
     use super::*;
     use proptest::prelude::Just;
-    use proptest::strategy::ValueTree;
     use std::env;
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -342,7 +394,7 @@ mod macro_tests {
             "INCREMENT".to_string()
         }
 
-        fn build(_ctx: &TestContext) -> impl Strategy<Value = CommandWrapper> {
+        fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
             Just(CommandWrapper::new(IncrementCommand))
         }
     }
@@ -351,8 +403,8 @@ mod macro_tests {
     fn test_deterministic_mode() {
         env::remove_var("MADHOUSE");
 
-        let ctx = TestContext::new(vec![]);
-        scenario!(ctx, [IncrementCommand]);
+        let ctx = Arc::new(TestContext::new(vec![]));
+        scenario![ctx, IncrementCommand];
     }
 
     #[test]
