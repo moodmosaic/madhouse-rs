@@ -47,7 +47,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use madhouse::{prop_allof, Command, CommandWrapper, State, TestContext, scenario};
+//! use madhouse::{execute_commands, prop_allof, Command, CommandWrapper, State, TestContext, scenario};
 //! use proptest::prelude::{Just, Strategy};
 //! use proptest::strategy::ValueTree;
 //! use std::env;
@@ -261,21 +261,7 @@ macro_rules! scenario {
                 ))| {
                     println!("\n=== New Test Run (MADHOUSE mode) ===\n");
                     let mut state = State::new();
-                    let mut executed = Vec::with_capacity(commands.len());
-                    for cmd in &commands {
-                        if cmd.command.check(&state) {
-                            cmd.command.apply(&mut state);
-                            executed.push(cmd);
-                        }
-                    }
-                    println!("Selected:");
-                    for (i, cmd) in commands.iter().enumerate() {
-                        println!("{:02}. {}", i + 1, cmd.command.label());
-                    }
-                    println!("Executed:");
-                    for (i, cmd) in executed.iter().enumerate() {
-                        println!("{:02}. {}", i + 1, cmd.command.label());
-                    }
+                    execute_commands(&commands, &mut state);
                 });
             } else {
                 proptest::proptest!(config, |(commands in prop_allof![
@@ -283,21 +269,7 @@ macro_rules! scenario {
                 ])| {
                     println!("\n=== New Test Run (deterministic mode) ===\n");
                     let mut state = State::new();
-                    let mut executed = Vec::with_capacity(commands.len());
-                    for cmd in &commands {
-                        if cmd.command.check(&state) {
-                            cmd.command.apply(&mut state);
-                            executed.push(cmd);
-                        }
-                    }
-                    println!("Selected:");
-                    for (i, cmd) in commands.iter().enumerate() {
-                        println!("{:02}. {}", i + 1, cmd.command.label());
-                    }
-                    println!("Executed:");
-                    for (i, cmd) in executed.iter().enumerate() {
-                        println!("{:02}. {}", i + 1, cmd.command.label());
-                    }
+                    execute_commands(&commands, &mut state);
                 });
             }
         }
