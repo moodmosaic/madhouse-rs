@@ -141,7 +141,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.6.0"
-source = "git+https://github.com/proptest-rs/proptest.git?rev=c9bdf18c232665b2b740c667c81866b598d06dc7#c9bdf18c232665b2b740c667c81866b598d06dc7"
+source = "git+https://github.com/moodmosaic/proptest.git?rev=c9bdf18c232665b2b740c667c81866b598d06dc7#c9bdf18c232665b2b740c667c81866b598d06dc7"
 dependencies = [
  "bit-set",
  "bit-vec",
