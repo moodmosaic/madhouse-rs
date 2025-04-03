@@ -1,4 +1,6 @@
-use madhouse::{prop_allof, scenario, Command, CommandWrapper, State, TestContext};
+use madhouse::{
+    execute_commands, prop_allof, scenario, Command, CommandWrapper, State, TestContext,
+};
 use proptest::prelude::{Just, Strategy};
 use std::env;
 use std::hash::{DefaultHasher, Hash, Hasher};
