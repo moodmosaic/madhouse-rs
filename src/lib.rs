@@ -283,7 +283,7 @@ impl State {
     /// assert!(state.block_leaders.contains_key(&height));
     /// assert_eq!(state.block_leaders[&height], miner_seed);
     ///
-    /// // Second sortition for same height fails.
+    /// // Attempting to store a second sortition winner for the same height fails.
     /// let result = state.add_sortition_block_leader(height, &miner_seed);
     /// assert!(result.is_err());
     /// ```
