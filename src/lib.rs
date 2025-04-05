@@ -1,9 +1,9 @@
 //! # madhouse-rs
 //!
-//! Model-based stateful testing for the stacks-node.
+//! A framework for model-based stateful testing.
 //!
 //! This library provides infrastructure for writing property-based tests
-//! that exercise the stacks-node through sequences of commands. It supports
+//! that exercise stateful systems through sequences of commands. It supports
 //! both deterministic and random testing approaches.
 //!
 //! ## Overview
@@ -65,240 +65,94 @@
 //! use std::env;
 //! use std::sync::Arc;
 //!
+//! // Define your State implementation.
+//! #[derive(Debug, Default)]
+//! struct MyState {
+//!     last_mined_block: u64,
+//! }
+//!
+//! // Implement State trait for your state.
+//! impl State for MyState {}
+//!
+//! // Define your TestContext implementation.
+//! #[derive(Debug, Default, Clone)]
+//! struct MyContext {
+//!     parameters: Vec<u32>,
+//! }
+//!
+//! // Implement TestContext trait for your context.
+//! impl TestContext for MyContext {}
+//!
 //! // Define a simple increment command.
 //! struct IncrementCommand;
 //!
-//! impl Command for IncrementCommand {
-//!     fn check(&self, _state: &State) -> bool { true }
-//!     fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
+//! impl Command<MyState, MyContext> for IncrementCommand {
+//!     fn check(&self, _state: &MyState) -> bool { true }
+//!     fn apply(&self, state: &mut MyState) { state.last_mined_block += 1; }
 //!     fn label(&self) -> String { "INCREMENT".to_string() }
-//!     fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
+//!     fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
 //!         Just(CommandWrapper::new(IncrementCommand))
 //!     }
 //! }
 //!
 //! // Set up test context.
-//! let test_context = Arc::new(TestContext::new(vec![]));
+//! let test_context = Arc::new(MyContext::default());
 //!
 //! // Run the test scenario.
 //! scenario! [test_context, IncrementCommand];
 //!
 //! // Manual execution.
-//! let mut state = State::new();
+//! let mut state = MyState::default();
 //! let commands = vec![CommandWrapper::new(IncrementCommand)];
 //! let executed = execute_commands(&commands, &mut state);
 //! assert_eq!(state.last_mined_block, 1);
 //! ```
 
 use proptest::prelude::Strategy;
-use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Miner seed type. Used to uniquely identify miners in the network.
-pub type MinerSeed = Vec<u8>;
+/// The State trait represents the system state being tested.
+/// Implement this trait for your specific system state.
+///
+/// # Examples
+///
+/// ```
+/// use madhouse::State;
+///
+/// // A simple state for a counter application.
+/// #[derive(Debug, Default)]
+/// struct CounterState {
+///     value: u64,
+///     max_reached: u64,
+///     increment_count: u64,
+/// }
+///
+/// // Simply implement the State trait to make it usable with madhouse.
+/// impl State for CounterState {}
+/// ```
+pub trait State: Debug {}
 
-/// Test context holds configuration for test generation.
-/// This provides shared context data that commands can use during test
-/// generation.
-#[derive(Clone, Debug)]
-pub struct TestContext {
-    /// Seeds for miners available to use in tests.
-    /// Each seed uniquely identifies a miner.
-    pub miner_seeds: Vec<MinerSeed>,
-}
-
-impl TestContext {
-    /// Creates a new test context with the provided miner seeds.
-    ///
-    /// # Arguments
-    ///
-    /// * `miner_seeds` - List of miner seeds available for use in tests.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::TestContext;
-    ///
-    /// let seeds = vec![vec![1, 2, 3], vec![4, 5, 6]];
-    /// let ctx = TestContext::new(seeds.clone());
-    /// assert_eq!(ctx.miner_seeds, seeds);
-    /// ```
-    pub fn new(miner_seeds: Vec<MinerSeed>) -> Self {
-        Self { miner_seeds }
-    }
-}
-
-/// State tracked during test execution.
-/// Represents the current state of the system being tested.
-/// Commands check against and modify this state.
-#[derive(Default, Debug)]
-pub struct State {
-    /// Set of miners that are currently running.
-    pub running_miners: HashSet<MinerSeed>,
-
-    /// The height of the most recently mined block.
-    pub last_mined_block: u64,
-
-    /// Map from block heights to the set of miners that committed to mine it.
-    pub block_commits: HashMap<u64, HashSet<MinerSeed>>,
-
-    /// Map from block heights to the miner that won the sortition.
-    pub block_leaders: HashMap<u64, MinerSeed>,
-}
-
-impl State {
-    /// Creates a new, empty state.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let state = State::new();
-    /// assert_eq!(state.last_mined_block, 0);
-    /// assert!(state.running_miners.is_empty());
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Checks if a miner with the given seed is running.
-    ///
-    /// # Arguments
-    ///
-    /// * `seed` - The seed of the miner to check.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let mut state = State::new();
-    /// let miner_seed = vec![1, 2, 3];
-    ///
-    /// assert!(!state.is_miner_running(&miner_seed));
-    ///
-    /// state.start_miner(&miner_seed);
-    /// assert!(state.is_miner_running(&miner_seed));
-    /// ```
-    pub fn is_miner_running(&self, seed: &MinerSeed) -> bool {
-        self.running_miners.contains(seed)
-    }
-
-    /// Returns the height of the next block to be mined.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let mut state = State::new();
-    /// assert_eq!(state.next_block_height(), 1);
-    ///
-    /// // After mining a block
-    /// state.last_mined_block = 5;
-    /// assert_eq!(state.next_block_height(), 6);
-    /// ```
-    pub fn next_block_height(&self) -> u64 {
-        self.last_mined_block + 1
-    }
-
-    /// Adds a miner to the set of running miners.
-    ///
-    /// # Arguments
-    ///
-    /// * `miner_seed` - Seed of the miner to start.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let mut state = State::new();
-    /// let miner_seed = vec![1, 2, 3];
-    ///
-    /// state.start_miner(&miner_seed);
-    /// assert!(state.is_miner_running(&miner_seed));
-    ///
-    /// // Starting the same miner again is idempotent
-    /// state.start_miner(&miner_seed);
-    /// assert!(state.is_miner_running(&miner_seed));
-    /// ```
-    pub fn start_miner(&mut self, miner_seed: &[u8]) {
-        self.running_miners.insert(miner_seed.to_vec());
-    }
-
-    /// Records a block commitment from a miner at the specified height.
-    ///
-    /// # Arguments
-    ///
-    /// * `height` - Block height the miner is committing to.
-    /// * `miner_seed` - Seed of the committing miner.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let mut state = State::new();
-    /// let miner_seed = vec![1, 2, 3];
-    /// let height = 1;
-    ///
-    /// state.add_block_commit(height, &miner_seed);
-    /// assert!(state.block_commits.contains_key(&height));
-    /// assert!(state.block_commits[&height].contains(&miner_seed));
-    /// ```
-    pub fn add_block_commit(&mut self, height: u64, miner_seed: &[u8]) {
-        self.block_commits
-            .entry(height)
-            .or_default()
-            .insert(miner_seed.to_vec());
-    }
-
-    /// Records the winner of a sortition for a specific block height.
-    ///
-    /// # Arguments
-    ///
-    /// * `height` - Block height for the sortition.
-    /// * `miner_seed` - Seed of the winning miner.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` if successful.
-    /// * `Err` with an error message if sortition already happened.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::State;
-    ///
-    /// let mut state = State::new();
-    /// let miner_seed = vec![1, 2, 3];
-    /// let height = 1;
-    ///
-    /// // First sortition succeeds.
-    /// assert!(state.add_sortition_block_leader(height, &miner_seed).is_ok());
-    /// assert!(state.block_leaders.contains_key(&height));
-    /// assert_eq!(state.block_leaders[&height], miner_seed);
-    ///
-    /// // Attempting to store a second sortition winner for the same height fails.
-    /// let result = state.add_sortition_block_leader(height, &miner_seed);
-    /// assert!(result.is_err());
-    /// ```
-    pub fn add_sortition_block_leader(
-        &mut self,
-        height: u64,
-        miner_seed: &[u8],
-    ) -> Result<(), String> {
-        if self.block_leaders.contains_key(&height) {
-            return Err(format!("Sortition already happened for height {}.", height));
-        }
-        self.block_leaders.insert(height, miner_seed.to_vec());
-        Ok(())
-    }
-}
+/// The TestContext trait represents the test configuration.
+/// Implement this trait for your specific test context.
+///
+/// # Examples
+///
+/// ```
+/// use madhouse::TestContext;
+///
+/// // A context that provides test configuration.
+/// #[derive(Debug, Clone, Default)]
+/// struct CounterContext {
+///     max_increment: u64,
+///     allowed_operations: Vec<String>,
+/// }
+///
+/// // Simply implement the TestContext trait.
+/// impl TestContext for CounterContext {}
+/// ```
+pub trait TestContext: Debug + Clone {}
 
 /// Trait for commands in the stateful testing framework.
 /// Each command represents an action that can be performed in the system.
@@ -307,13 +161,66 @@ impl State {
 /// - Applying themselves to modify the state.
 /// - Providing a descriptive label.
 /// - Building a strategy for generating instances of the command.
-pub trait Command {
+///
+/// # Examples
+///
+/// ```
+/// use madhouse::{Command, CommandWrapper, State, TestContext};
+/// use proptest::prelude::*;
+/// use std::sync::Arc;
+///
+/// // Define state and context.
+/// #[derive(Debug, Default)]
+/// struct CounterState {
+///     count: u64,
+///     max_value: u64,
+/// }
+/// impl State for CounterState {}
+///
+/// #[derive(Debug, Clone, Default)]
+/// struct CounterContext {
+///     increment_sizes: Vec<u64>,
+/// }
+/// impl TestContext for CounterContext {}
+///
+/// // Define a command to increment the counter.
+/// struct IncrementCommand {
+///     amount: u64,
+/// }
+///
+/// impl Command<CounterState, CounterContext> for IncrementCommand {
+///     // Check if we can apply this command.
+///     fn check(&self, state: &CounterState) -> bool {
+///         state.count + self.amount <= state.max_value
+///     }
+///
+///     // Apply the command to the state.
+///     fn apply(&self, state: &mut CounterState) {
+///         state.count += self.amount;
+///     }
+///
+///     // Provide a descriptive label.
+///     fn label(&self) -> String {
+///         format!("INCREMENT({})", self.amount)
+///     }
+///
+///     // Build a strategy for generating instances.
+///     fn build(ctx: Arc<CounterContext>) -> impl Strategy<Value = CommandWrapper<CounterState, CounterContext>> {
+///         let increments = ctx.increment_sizes.clone();
+///         (0..increments.len()).prop_map(move |idx| {
+///             let amount = increments.get(idx).cloned().unwrap_or(1);
+///             CommandWrapper::new(IncrementCommand { amount })
+///         })
+///     }
+/// }
+/// ```
+pub trait Command<S: State, C: TestContext> {
     /// Checks if the command can be applied to the current state.
     /// Returns true if the command can be applied, false otherwise.
     ///
     /// # Arguments
     /// * `state` - The current state to check against.
-    fn check(&self, state: &State) -> bool;
+    fn check(&self, state: &S) -> bool;
 
     /// Applies the command to the state, modifying it.
     /// This method should only be called if `check` returns true.
@@ -321,7 +228,7 @@ pub trait Command {
     ///
     /// # Arguments
     /// * `state` - The state to modify.
-    fn apply(&self, state: &mut State);
+    fn apply(&self, state: &mut S);
 
     /// Returns a human-readable label for the command.
     /// Used for debugging and test output.
@@ -331,7 +238,7 @@ pub trait Command {
     ///
     /// # Arguments
     /// * `ctx` - Test context used to parameterize command generation.
-    fn build(ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper>
+    fn build(ctx: Arc<C>) -> impl Strategy<Value = CommandWrapper<S, C>>
     where
         Self: Sized;
 }
@@ -340,49 +247,67 @@ pub trait Command {
 /// This wrapper allows commands to be stored in collections and
 /// passed between functions while preserving their concrete type.
 /// It provides a convenient way to implement Debug for dynamic Commands.
-#[derive(Clone)]
-pub struct CommandWrapper {
+///
+/// # Examples
+///
+/// ```
+/// use madhouse::{Command, CommandWrapper, State};
+/// use proptest::prelude::*;
+/// use std::sync::Arc;
+///
+/// // Define your state.
+/// #[derive(Debug, Default)]
+/// struct MyState { counter: u64 }
+/// impl State for MyState {}
+///
+/// // Define your context.
+/// #[derive(Debug, Clone, Default)]
+/// struct MyContext {}
+/// impl madhouse::TestContext for MyContext {}
+///
+/// // Define your command.
+/// struct IncrementCmd;
+/// impl Command<MyState, MyContext> for IncrementCmd {
+///     fn check(&self, _state: &MyState) -> bool { true }
+///     fn apply(&self, state: &mut MyState) { state.counter += 1; }
+///     fn label(&self) -> String { "INCREMENT".to_string() }
+///     fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
+///         Just(CommandWrapper::new(IncrementCmd))
+///     }
+/// }
+///
+/// // Create and use the wrapper.
+/// let cmd = IncrementCmd;
+/// let wrapper = CommandWrapper::new(cmd);
+/// assert_eq!(wrapper.command.label(), "INCREMENT");
+/// ```
+pub struct CommandWrapper<S: State, C: TestContext> {
     /// The wrapped command trait object.
-    pub command: Arc<dyn Command>,
+    pub command: Arc<dyn Command<S, C>>,
 }
 
-impl CommandWrapper {
+impl<S: State, C: TestContext> CommandWrapper<S, C> {
     /// Creates a new command wrapper for the given command.
     ///
     /// # Arguments
     ///
     /// * `cmd` - The command to wrap.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use madhouse::{Command, CommandWrapper, State};
-    /// use proptest::prelude::*;
-    /// use std::sync::Arc;
-    ///
-    /// struct TestCommand;
-    /// impl Command for TestCommand {
-    ///     fn check(&self, _state: &State) -> bool { true }
-    ///     fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
-    ///     fn label(&self) -> String { "TEST".to_string() }
-    ///     fn build(_ctx: Arc<madhouse::TestContext>) ->
-    ///         impl Strategy<Value = CommandWrapper> {
-    ///         Just(CommandWrapper::new(TestCommand))
-    ///     }
-    /// }
-    ///
-    /// let cmd = TestCommand;
-    /// let wrapper = CommandWrapper::new(cmd);
-    /// assert_eq!(wrapper.command.label(), "TEST");
-    /// ```
-    pub fn new<C: Command + 'static>(cmd: C) -> Self {
+    pub fn new<Cmd: Command<S, C> + 'static>(cmd: Cmd) -> Self {
         Self {
             command: Arc::new(cmd),
         }
     }
 }
 
-impl Debug for CommandWrapper {
+impl<S: State, C: TestContext> Clone for CommandWrapper<S, C> {
+    fn clone(&self) -> Self {
+        Self {
+            command: Arc::clone(&self.command),
+        }
+    }
+}
+
+impl<S: State, C: TestContext> Debug for CommandWrapper<S, C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.command.label())
     }
@@ -450,34 +375,49 @@ macro_rules! prop_allof {
 /// # Examples
 ///
 /// ```
-/// use madhouse::{Command, CommandWrapper, State, execute_commands};
+/// use madhouse::{Command, CommandWrapper, State, TestContext, execute_commands};
 /// use proptest::prelude::*;
 /// use std::sync::Arc;
 ///
+/// // Define state and context.
+/// #[derive(Debug, Default)]
+/// struct CounterState {
+///     value: u64,
+/// }
+/// impl State for CounterState {}
+///
+/// #[derive(Debug, Clone, Default)]
+/// struct CounterContext {}
+/// impl TestContext for CounterContext {}
+///
 /// // Define a simple command.
-/// struct TestCommand;
-/// impl Command for TestCommand {
-///     fn check(&self, _state: &State) -> bool { true }
-///     fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
-///     fn label(&self) -> String { "TEST".to_string() }
-///     fn build(_ctx: Arc<madhouse::TestContext>) ->
-///         impl Strategy<Value = CommandWrapper> {
-///         Just(CommandWrapper::new(TestCommand))
+/// struct IncrementCommand(u64);
+///
+/// impl Command<CounterState, CounterContext> for IncrementCommand {
+///     fn check(&self, _state: &CounterState) -> bool { true }
+///     fn apply(&self, state: &mut CounterState) { state.value += self.0; }
+///     fn label(&self) -> String { format!("INCREMENT({})", self.0) }
+///     fn build(_ctx: Arc<CounterContext>) ->
+///         impl Strategy<Value = CommandWrapper<CounterState, CounterContext>> {
+///         Just(CommandWrapper::new(IncrementCommand(1)))
 ///     }
 /// }
 ///
 /// // Execute commands.
-/// let mut state = State::new();
-/// let commands = vec![CommandWrapper::new(TestCommand)];
-/// let executed = execute_commands(&commands, &mut state);
+/// let mut state = CounterState::default();
+/// let commands = vec![
+///     CommandWrapper::new(IncrementCommand(3)),
+///     CommandWrapper::new(IncrementCommand(5)),
+/// ];
 ///
-/// assert_eq!(executed.len(), 1);
-/// assert_eq!(state.last_mined_block, 1);
+/// let executed = execute_commands(&commands, &mut state);
+/// assert_eq!(executed.len(), 2);
+/// assert_eq!(state.value, 8);
 /// ```
-pub fn execute_commands<'a>(
-    commands: &'a [CommandWrapper],
-    state: &mut State,
-) -> Vec<&'a CommandWrapper> {
+pub fn execute_commands<'a, S: State, C: TestContext>(
+    commands: &'a [CommandWrapper<S, C>],
+    state: &mut S,
+) -> Vec<&'a CommandWrapper<S, C>> {
     let mut executed = Vec::with_capacity(commands.len());
     let mut execution_times = Vec::with_capacity(commands.len());
 
@@ -544,21 +484,42 @@ pub fn execute_commands<'a>(
 /// use std::env;
 /// use std::sync::Arc;
 ///
-/// // Define a test command.
-/// struct MyCommand;
+/// // Define your application state.
+/// #[derive(Debug, Default)]
+/// struct AppState {
+///     counter: u64,
+/// }
+/// impl State for AppState {}
 ///
-/// impl Command for MyCommand {
-///     fn check(&self, _state: &State) -> bool { true }
-///     fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
-///     fn label(&self) -> String { "TEST".to_string() }
-///     fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
-///         Just(CommandWrapper::new(MyCommand))
+/// // Define your test context.
+/// #[derive(Debug, Clone, Default)]
+/// struct AppContext {}
+/// impl TestContext for AppContext {}
+///
+/// // Define some commands.
+/// struct IncrementCommand;
+/// impl Command<AppState, AppContext> for IncrementCommand {
+///     fn check(&self, _state: &AppState) -> bool { true }
+///     fn apply(&self, state: &mut AppState) { state.counter += 1; }
+///     fn label(&self) -> String { "INCREMENT".to_string() }
+///     fn build(_ctx: Arc<AppContext>) -> impl Strategy<Value = CommandWrapper<AppState, AppContext>> {
+///         Just(CommandWrapper::new(IncrementCommand))
+///     }
+/// }
+///
+/// struct ResetCommand;
+/// impl Command<AppState, AppContext> for ResetCommand {
+///     fn check(&self, state: &AppState) -> bool { state.counter > 0 }
+///     fn apply(&self, state: &mut AppState) { state.counter = 0; }
+///     fn label(&self) -> String { "RESET".to_string() }
+///     fn build(_ctx: Arc<AppContext>) -> impl Strategy<Value = CommandWrapper<AppState, AppContext>> {
+///         Just(CommandWrapper::new(ResetCommand))
 ///     }
 /// }
 ///
 /// // Run the test.
-/// let ctx = Arc::new(TestContext::new(vec![]));
-/// scenario![ctx, MyCommand];
+/// let ctx = Arc::new(AppContext::default());
+/// scenario![ctx, IncrementCommand, ResetCommand];
 /// ```
 #[macro_export]
 macro_rules! scenario {
@@ -582,7 +543,7 @@ macro_rules! scenario {
                     1..16,
                 ))| {
                     println!("\n=== New Test Run (MADHOUSE mode) ===\n");
-                    let mut state = State::new();
+                    let mut state = <_ as std::default::Default>::default();
                     execute_commands(&commands, &mut state);
                 });
             } else {
@@ -590,7 +551,7 @@ macro_rules! scenario {
                     $($cmd_type::build(test_context.clone())),+
                 ])| {
                     println!("\n=== New Test Run (deterministic mode) ===\n");
-                    let mut state = State::new();
+                    let mut state = <_ as std::default::Default>::default();
                     execute_commands(&commands, &mut state);
                 });
             }
@@ -603,16 +564,28 @@ mod tests {
     use super::*;
     use proptest::prelude::Just;
 
+    #[derive(Clone, Debug, Default)]
+    struct MyState {
+        last_mined_block: u64,
+    }
+
+    impl State for MyState {}
+
+    #[derive(Debug, Clone, Default)]
+    struct MyContext {}
+
+    impl TestContext for MyContext {}
+
     struct TestCommand {
         value: u32,
     }
 
-    impl Command for TestCommand {
-        fn check(&self, _state: &State) -> bool {
+    impl Command<MyState, MyContext> for TestCommand {
+        fn check(&self, _state: &MyState) -> bool {
             true
         }
 
-        fn apply(&self, state: &mut State) {
+        fn apply(&self, state: &mut MyState) {
             state.last_mined_block += self.value as u64;
         }
 
@@ -620,7 +593,7 @@ mod tests {
             format!("TEST({})", self.value)
         }
 
-        fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
+        fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
             Just(CommandWrapper::new(TestCommand { value: 1 }))
         }
     }
@@ -629,43 +602,13 @@ mod tests {
     fn test_command_wrapper() {
         let cmd = TestCommand { value: 42 };
         let wrapper = CommandWrapper::new(cmd);
-        let mut state = State::new();
+        let mut state = MyState::default();
         assert!(wrapper.command.check(&state));
 
         wrapper.command.apply(&mut state);
 
         assert_eq!(state.last_mined_block, 42);
         assert_eq!(format!("{:?}", wrapper), "TEST(42)");
-    }
-
-    #[test]
-    fn test_state() {
-        let mut state = State::new();
-        assert_eq!(state.next_block_height(), 1);
-
-        let miner_seed = vec![1, 2, 3];
-        state.start_miner(&miner_seed);
-        assert!(state.is_miner_running(&miner_seed));
-
-        state.add_block_commit(1, &miner_seed);
-        assert!(state.block_commits.contains_key(&1));
-        assert!(state.block_commits[&1].contains(&miner_seed));
-
-        let result = state.add_sortition_block_leader(1, &miner_seed);
-        assert!(result.is_ok());
-        assert!(state.block_leaders.contains_key(&1));
-        assert_eq!(state.block_leaders[&1], miner_seed);
-
-        // Test adding another sortition for the same height
-        let result = state.add_sortition_block_leader(1, &miner_seed);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_test_context() {
-        let miner_seeds = vec![vec![1, 2, 3], vec![4, 5, 6]];
-        let ctx = TestContext::new(miner_seeds.clone());
-        assert_eq!(ctx.miner_seeds, miner_seeds);
     }
 
     #[test]
@@ -692,8 +635,8 @@ mod tests {
 
     #[test]
     fn test_execute_commands_empty() {
-        let commands: Vec<CommandWrapper> = vec![];
-        let mut state = State::new();
+        let commands: Vec<CommandWrapper<MyState, MyContext>> = vec![];
+        let mut state = MyState::default();
 
         let executed = execute_commands(&commands, &mut state);
         assert!(executed.is_empty());
@@ -703,15 +646,15 @@ mod tests {
     fn test_execute_commands_all_rejected() {
         struct RejectCommand;
 
-        impl Command for RejectCommand {
-            fn check(&self, _state: &State) -> bool {
+        impl Command<MyState, MyContext> for RejectCommand {
+            fn check(&self, _state: &MyState) -> bool {
                 false
             }
-            fn apply(&self, _state: &mut State) {}
+            fn apply(&self, _state: &mut MyState) {}
             fn label(&self) -> String {
                 "REJECT".to_string()
             }
-            fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
+            fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
                 Just(CommandWrapper::new(RejectCommand))
             }
         }
@@ -720,7 +663,7 @@ mod tests {
             CommandWrapper::new(RejectCommand),
             CommandWrapper::new(RejectCommand),
         ];
-        let mut state = State::new();
+        let mut state = MyState::default();
 
         let executed = execute_commands(&commands, &mut state);
         assert!(executed.is_empty());
@@ -735,15 +678,27 @@ mod macro_tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    #[derive(Debug, Default, Clone)]
+    struct MyState {
+        last_mined_block: u64,
+    }
+
+    impl State for MyState {}
+
+    #[derive(Debug, Clone, Default)]
+    struct MyContext {}
+
+    impl TestContext for MyContext {}
+
     // Simple test command that increments block count.
     struct IncrementCommand;
 
-    impl Command for IncrementCommand {
-        fn check(&self, _state: &State) -> bool {
+    impl Command<MyState, MyContext> for IncrementCommand {
+        fn check(&self, _state: &MyState) -> bool {
             true
         }
 
-        fn apply(&self, state: &mut State) {
+        fn apply(&self, state: &mut MyState) {
             state.last_mined_block += 1;
         }
 
@@ -751,7 +706,7 @@ mod macro_tests {
             "INCREMENT".to_string()
         }
 
-        fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
+        fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
             Just(CommandWrapper::new(IncrementCommand))
         }
     }
@@ -760,14 +715,14 @@ mod macro_tests {
     fn test_deterministic_mode() {
         env::remove_var("MADHOUSE");
 
-        let ctx = Arc::new(TestContext::new(vec![]));
+        let ctx = Arc::new(MyContext::default());
         scenario![ctx, IncrementCommand];
     }
 
     #[test]
     fn test_shared_state_persistence() {
         // Test that a shared state accumulates changes across runs.
-        let shared_state = Arc::new(Mutex::new(State::new()));
+        let shared_state = Arc::new(Mutex::new(MyState::default()));
 
         for i in 0..3 {
             let cmd1 = CommandWrapper::new(IncrementCommand);
