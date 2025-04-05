@@ -1,6 +1,6 @@
 //! # madhouse-rs
 //!
-//! A framework for model-based stateful testing.
+//! Model-based Rust state machine testing.
 //!
 //! This library provides infrastructure for writing property-based tests
 //! that exercise stateful systems through sequences of commands. It supports
@@ -14,8 +14,6 @@
 //! - Manual test case construction is slow.
 //! - Properties span multiple operations.
 //!
-//! This framework implements state machine testing:
-//!
 //! ```text
 //!                    +-------+
 //!                    | State |
@@ -25,12 +23,11 @@
 //!   +---------+     +----+----+     +-----------+
 //!   | Command | --> | check() | --> |  apply()  |
 //!   +---------+     +---------+     | [asserts] |
-//!                                   +-----------+
-//!        ^                                |
-//!        |                                v
-//!   +----------+                      +--------+
-//!   | Strategy |                      | State' |
-//!   +----------+                      +--------+
+//!        ^                          +-----------+
+//!        |
+//!   +----------+
+//!   | Strategy |
+//!   +----------+
 //! ```
 //!
 //! Each command:
@@ -593,7 +590,9 @@ mod tests {
             format!("TEST({})", self.value)
         }
 
-        fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
+        fn build(
+            _ctx: Arc<MyContext>,
+        ) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
             Just(CommandWrapper::new(TestCommand { value: 1 }))
         }
     }
@@ -654,7 +653,9 @@ mod tests {
             fn label(&self) -> String {
                 "REJECT".to_string()
             }
-            fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
+            fn build(
+                _ctx: Arc<MyContext>,
+            ) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
                 Just(CommandWrapper::new(RejectCommand))
             }
         }
@@ -706,7 +707,9 @@ mod macro_tests {
             "INCREMENT".to_string()
         }
 
-        fn build(_ctx: Arc<MyContext>) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
+        fn build(
+            _ctx: Arc<MyContext>,
+        ) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
             Just(CommandWrapper::new(IncrementCommand))
         }
     }

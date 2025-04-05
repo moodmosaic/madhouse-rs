@@ -1,52 +1,60 @@
-madhouse-rs (mh-rs)
+MADHOUSE-RS(1)                   User Commands                   MADHOUSE-RS(1)
 
-WHAT IT DOES
------------
+NAME
+     madhouse-rs - Model-based Rust state machine testing.
 
-mh-rs tests systems through command sequences that mutate state:
+SYNOPSIS
+     MADHOUSE=1 cargo test [<test_name>]
 
-                 +-------+
-                 | State |
-                 +-------+
-                     ^
-                     |
-+---------+     +----+----+     +-----------+
-| Command | --> | check() | --> |  apply()  |
-+---------+     +---------+     | [asserts] |
-                                +-----------+
-     ^                                |
-     |                                v
-+----------+                     +--------+
-| Strategy |                     | State' |
-+----------+                     +--------+
+DESCRIPTION
+     Tests state machines via sequences of command objects. Each command:
+     1. Checks preconditions via check()
+     2. Mutates state via apply()
+     3. Verifies assertions
 
-Commands do three things: check preconditions, apply state changes, and verify
-correctness. No more forgetting to check edge cases.
+     Command flow:
+                   +-------+
+                   | State |
+                   +-------+
+                       ^
+                       |
+  +---------+     +----+----+     +-----------+
+  | Command | --> | check() | --> |  apply()  |
+  +---------+     +---------+     | [asserts] |
+       ^                          +-----------+
+       |
+  +----------+
+  | Strategy |
+  +----------+
 
+OPTIONS
+     MADHOUSE=1
+          Enables random command selection mode.
+
+MODES
+     NORMAL    Commands run in specified order.
+     RANDOM    Commands chosen pseudorandomly (when MADHOUSE=1).
 
 FEATURES
--------
-- Trait-based design that actually forces you to think about state.
-- Commands validate themselves - no more half-assed tests.
-- Works in both deterministic and random testing modes.
-- Shows execution time so you know what's slow.
-- Ability to shrink test cases when it finds bugs.
+     - Trait-based command design
+     - Self-validating commands
+     - Timing information
+     - Test case shrinking
 
+SEE ALSO
+     proptest(1), cargo-test(1)
 
-USAGE
------
-For detailed usage, check the source code which contains comprehensive
-examples and tests.
+BUGS
+     Report at https://github.com/moodmosaic/madhouse-rs
 
+AUTHORS
+     Nikos Baxevanis, Radu Bahmata
 
-EXECUTION MODES
---------------
-- DEFAULT MODE: Commands execute in the order you specified
-- SHUFFLE MODE: Commands run in random order (set MADHOUSE=1)
-
-Use shuffle mode to find bugs, deterministic mode to run scenarios.
-
+COPYRIGHT
+     Copyright (C) 2025 Stacks Open Internet Foundation. <https://stacks.org/>
 
 LICENSE
--------
-GNU General Public License v3 (GPL-3.0) 
+     GPL-3.0
+
+VERSION
+     0.1.0                       2025-04-06                      MADHOUSE-RS(1)
