@@ -35,27 +35,8 @@ FEATURES
 
 USAGE
 -----
-Write tests like this:
-
-  use madhouse::{Command, CommandWrapper, State, TestContext, scenario};
-  use proptest::prelude::Just;
-  use std::sync::Arc;
-
-  // Define a command.
-  struct IncrementCommand;
-
-  impl Command for IncrementCommand {
-      fn check(&self, _state: &State) -> bool { true }
-      fn apply(&self, state: &mut State) { state.last_mined_block += 1; }
-      fn label(&self) -> String { "INCREMENT".to_string() }
-      fn build(_ctx: Arc<TestContext>) -> impl Strategy<Value = CommandWrapper> {
-          Just(CommandWrapper::new(IncrementCommand))
-      }
-  }
-
-  // Run test.
-  let context = Arc::new(TestContext::new(vec![]));
-  scenario![context, IncrementCommand];
+For detailed usage, check the source code which contains comprehensive
+examples and tests.
 
 
 EXECUTION MODES
