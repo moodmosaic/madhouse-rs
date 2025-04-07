@@ -677,11 +677,10 @@ mod macro_tests {
     use proptest::prelude::Just;
     use std::env;
     use std::sync::Arc;
-    use std::sync::Mutex;
 
     #[derive(Debug, Default, Clone)]
     struct MyState {
-        last_mined_block: u64,
+        action_chronicle: Vec<String>,
     }
 
     impl State for MyState {}
@@ -691,42 +690,38 @@ mod macro_tests {
 
     impl TestContext for MyContext {}
 
-    // Simple test command that increments block count.
-    struct IncrementCommand;
-
-    impl Command<MyState, MyContext> for IncrementCommand {
-        fn check(&self, _state: &MyState) -> bool {
-            true
-        }
-
-        fn apply(&self, state: &mut MyState) {
-            state.last_mined_block += 1;
-        }
-
-        fn label(&self) -> String {
-            "INCREMENT".to_string()
-        }
-
-        fn build(
-            _ctx: Arc<MyContext>,
-        ) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
-            Just(CommandWrapper::new(IncrementCommand))
-        }
+    macro_rules! my_command {
+        ($name:ident, $label:expr) => {
+            struct $name;
+            impl Command<MyState, MyContext> for $name {
+                fn check(&self, _state: &MyState) -> bool {
+                    true
+                }
+                fn apply(&self, state: &mut MyState) {
+                    state.action_chronicle.push($label.to_string());
+                }
+                fn label(&self) -> String {
+                    $label.to_string()
+                }
+                fn build(
+                    _ctx: Arc<MyContext>,
+                ) -> impl Strategy<Value = CommandWrapper<MyState, MyContext>> {
+                    Just(CommandWrapper::new($name))
+                }
+            }
+        };
     }
 
+    my_command!(A, "A");
+    my_command!(B, "B");
+    my_command!(C, "C");
+    my_command!(D, "D");
+    my_command!(E, "E");
+    my_command!(F, "F");
+
     #[test]
-    fn test_deterministic_mode() {
-        env::remove_var("MADHOUSE");
-
+    fn run_scenario() {
         let ctx = Arc::new(MyContext::default());
-        scenario![ctx, IncrementCommand];
-    }
-
-    #[test]
-    fn test_deterministic_mode() {
-        env::remove_var("MADHOUSE");
-
-        let ctx = Arc::new(MyContext::default());
-        scenario![ctx, IncrementCommand];
+        scenario![ctx, A, B, C, D, E, F];
     }
 }
