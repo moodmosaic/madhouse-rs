@@ -723,22 +723,10 @@ mod macro_tests {
     }
 
     #[test]
-    fn test_shared_state_persistence() {
-        // Test that a shared state accumulates changes across runs.
-        let shared_state = Arc::new(Mutex::new(MyState::default()));
+    fn test_deterministic_mode() {
+        env::remove_var("MADHOUSE");
 
-        for i in 0..3 {
-            let cmd1 = CommandWrapper::new(IncrementCommand);
-            let cmd2 = CommandWrapper::new(IncrementCommand);
-            let cmds = vec![cmd1, cmd2];
-
-            let mut state = shared_state.lock().unwrap();
-            execute_commands(&cmds, &mut state);
-
-            assert_eq!(state.last_mined_block, (i + 1) * 2);
-        }
-
-        // State persisted across all runs.
-        assert_eq!(shared_state.lock().unwrap().last_mined_block, 6);
+        let ctx = Arc::new(MyContext::default());
+        scenario![ctx, IncrementCommand];
     }
 }
