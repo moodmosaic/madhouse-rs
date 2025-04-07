@@ -637,7 +637,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod macro_tests {
+mod scenario_tests {
     use super::*;
     use proptest::prelude::Just;
     use std::env;
@@ -688,5 +688,94 @@ mod macro_tests {
     fn run_scenario() {
         let ctx = Arc::new(MyContext::default());
         scenario![ctx, A, B, C, D, E, F];
+    }
+}
+
+#[cfg(test)]
+mod shrinking_scenario_tests {
+    use super::*;
+    use std::env;
+    use std::sync::Arc;
+
+    #[derive(Debug, Default)]
+    struct CounterState {
+        value: u32,
+    }
+
+    impl State for CounterState {}
+
+    #[derive(Debug, Clone, Default)]
+    struct CounterContext {}
+
+    impl TestContext for CounterContext {}
+
+    struct IncrementCommand {
+        amount: u32,
+    }
+
+    impl Command<CounterState, CounterContext> for IncrementCommand {
+        fn check(&self, _state: &CounterState) -> bool {
+            true
+        }
+
+        fn apply(&self, state: &mut CounterState) {
+            state.value += self.amount;
+
+            assert!(
+                state.value <= 100,
+                "Counter value exceeded maximum allowed: {}",
+                state.value
+            );
+        }
+
+        fn label(&self) -> String {
+            format!("INCREMENT({})", self.amount)
+        }
+
+        fn build(
+            _ctx: Arc<CounterContext>,
+        ) -> impl Strategy<Value = CommandWrapper<CounterState, CounterContext>> {
+            // Generate increment amounts between 1 and 50.
+            (1..=50u32).prop_map(|amount| CommandWrapper::new(IncrementCommand { amount }))
+        }
+    }
+
+    // Command that adds a smaller amount to demonstrate shrinking better.
+    struct SmallIncrementCommand {
+        amount: u32,
+    }
+
+    impl Command<CounterState, CounterContext> for SmallIncrementCommand {
+        fn check(&self, _state: &CounterState) -> bool {
+            true
+        }
+
+        fn apply(&self, state: &mut CounterState) {
+            state.value += self.amount;
+            assert!(
+                state.value <= 100,
+                "Counter value exceeded maximum allowed: {}",
+                state.value
+            );
+        }
+
+        fn label(&self) -> String {
+            format!("SMALL_INCREMENT({})", self.amount)
+        }
+
+        fn build(
+            _ctx: Arc<CounterContext>,
+        ) -> impl Strategy<Value = CommandWrapper<CounterState, CounterContext>> {
+            (1..=10u32).prop_map(|amount| CommandWrapper::new(SmallIncrementCommand { amount }))
+        }
+    }
+
+    // To see shrinking in action, run:
+    // MADHOUSE=1 PROPTEST_MAX_SHRINK_ITERS=50 \
+    // cargo test demonstrate_shrinking -- --nocapture
+    #[test]
+    fn demonstrate_shrinking() {
+        let ctx = Arc::new(CounterContext::default());
+        scenario![ctx, IncrementCommand, SmallIncrementCommand];
     }
 }
