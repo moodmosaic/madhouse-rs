@@ -2,17 +2,12 @@
 //!
 //! Model-based Rust state machine testing.
 //!
-//! This library provides infrastructure for writing property-based tests
-//! that exercise stateful systems through sequences of commands. It supports
-//! both deterministic and random testing approaches.
+//! Tests state machines via sequences of command objects. Each command:
+//! 1. Checks preconditions via check()
+//! 2. Mutates state via apply()
+//! 3. Verifies assertions
 //!
-//! ## Overview
-//!
-//! Stateful systems often have complex behaviors:
-//! - Many hardcoded test sequences are needed.
-//! - Timing-dependent behavior is hard to test systematically.
-//! - Manual test case construction is slow.
-//! - Properties span multiple operations.
+//! ## Command flow
 //!
 //! ```text
 //!                    +-------+
@@ -30,25 +25,17 @@
 //!   +----------+
 //! ```
 //!
-//! Each command:
-//! 1. Has a strategy for generation.
-//! 2. Checks preconditions before execution.
-//! 3. Applies state changes.
-//! 4. Asserts correctness.
+//! ## Modes
 //!
-//! ## Benefits
+//! - **Normal**: Commands run in specified order.
+//! - **Random**: Commands chosen pseudorandomly (when MADHOUSE=1).
 //!
-//! - Trait-based design encapsulates behavior.
-//! - Commands are autonomous and self-validating.
-//! - Enables both property-based and deterministic testing.
-//! - Supports automatic test case shrinking for easier debugging.
+//! ## Features
 //!
-//! ## Execution Modes
-//!
-//! - **Deterministic mode**: Commands are executed in the order specified
-//!   (default mode)
-//! - **Random mode**: Commands are randomly selected using proptest
-//!   (activated by setting `MADHOUSE=1` environment variable)
+//! - Trait-based command design
+//! - Self-validating commands
+//! - Timing information
+//! - Test case shrinking
 //!
 //! ## Example
 //!
@@ -110,15 +97,13 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// The State trait represents the system state being tested.
-/// Implement this trait for your specific system state.
+/// System state being tested.
 ///
 /// # Examples
 ///
 /// ```
 /// use madhouse::State;
 ///
-/// // A simple state for a counter application.
 /// #[derive(Debug, Default)]
 /// struct CounterState {
 ///     value: u64,
@@ -126,38 +111,34 @@ use std::time::Instant;
 ///     increment_count: u64,
 /// }
 ///
-/// // Simply implement the State trait to make it usable with madhouse.
 /// impl State for CounterState {}
 /// ```
 pub trait State: Debug {}
 
-/// The TestContext trait represents the test configuration.
-/// Implement this trait for your specific test context.
+/// Test configuration.
 ///
 /// # Examples
 ///
 /// ```
 /// use madhouse::TestContext;
 ///
-/// // A context that provides test configuration.
 /// #[derive(Debug, Clone, Default)]
 /// struct CounterContext {
 ///     max_increment: u64,
 ///     allowed_operations: Vec<String>,
 /// }
 ///
-/// // Simply implement the TestContext trait.
 /// impl TestContext for CounterContext {}
 /// ```
 pub trait TestContext: Debug + Clone {}
 
-/// Trait for commands in the stateful testing framework.
-/// Each command represents an action that can be performed in the system.
-/// Commands are responsible for:
-/// - Checking if they can be applied to the current state.
-/// - Applying themselves to modify the state.
-/// - Providing a descriptive label.
-/// - Building a strategy for generating instances of the command.
+/// Commands in the stateful testing framework.
+///
+/// Commands handle:
+/// - Checking preconditions
+/// - Applying state changes
+/// - Providing descriptive labels
+/// - Building strategies for generation
 ///
 /// # Examples
 ///
@@ -213,22 +194,18 @@ pub trait TestContext: Debug + Clone {}
 /// ```
 pub trait Command<S: State, C: TestContext> {
     /// Checks if the command can be applied to the current state.
-    /// Returns true if the command can be applied, false otherwise.
     ///
     /// # Arguments
-    /// * `state` - The current state to check against.
+    /// * `state` - Current state to check against.
     fn check(&self, state: &S) -> bool;
 
     /// Applies the command to the state, modifying it.
-    /// This method should only be called if `check` returns true.
-    /// It can include assertions to verify correctness.
     ///
     /// # Arguments
-    /// * `state` - The state to modify.
+    /// * `state` - State to modify.
     fn apply(&self, state: &mut S);
 
     /// Returns a human-readable label for the command.
-    /// Used for debugging and test output.
     fn label(&self) -> String;
 
     /// Builds a proptest strategy for generating instances of this command.
@@ -241,9 +218,7 @@ pub trait Command<S: State, C: TestContext> {
 }
 
 /// Wrapper for command trait objects.
-/// This wrapper allows commands to be stored in collections and
-/// passed between functions while preserving their concrete type.
-/// It provides a convenient way to implement Debug for dynamic Commands.
+/// Allows commands to be stored in collections while preserving concrete types.
 ///
 /// # Examples
 ///
@@ -310,11 +285,7 @@ impl<S: State, C: TestContext> Debug for CommandWrapper<S, C> {
     }
 }
 
-/// Creates a strategy that always returns a Vec containing values from all the
-/// provided strategies, in the exact order they were passed.
-///
-/// This is similar to `prop_oneof` but instead of randomly picking strategies,
-/// it includes values from all strategies in a Vec.
+/// Creates a strategy that returns a Vec containing values from all provided strategies.
 ///
 /// # Examples
 ///
@@ -354,20 +325,20 @@ macro_rules! prop_allof {
     };
 }
 
-/// Executes a sequence of commands and returns those that were executed.
+/// Executes a sequence of commands and returns those executed.
 ///
 /// This function:
-/// 1. Filters commands based on their `check` method.
+/// 1. Filters commands based on check() method.
 /// 2. Applies each valid command to the state.
-/// 3. Measures execution time for each command.
-/// 4. Prints a colored summary of selected and executed commands.
+/// 3. Measures execution time.
+/// 4. Prints a summary of selected and executed commands.
 ///
 /// # Arguments
 /// * `commands` - Slice of commands to potentially execute.
-/// * `state` - Mutable state that commands will check against and modify.
+/// * `state` - Mutable state that commands will modify.
 ///
 /// # Returns
-/// A vector of references to commands that were actually executed.
+/// A vector of references to commands that were executed.
 ///
 /// # Examples
 ///
@@ -455,19 +426,13 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 
 /// Macro for running stateful tests.
 ///
-/// By default, commands are executed deterministically in the order
-/// they are passed. If the `MADHOUSE=1` environment variable is set
-/// commands are executed randomly.
-///
-/// This macro configures proptest to:
-/// - Run a single test case (cases = 1).
-/// - Skip shrinking (max_shrink_iters = 0).
-/// - Use either random or deterministic command generation.
+/// By default, commands are executed deterministically.
+/// If MADHOUSE=1 environment variable is set, commands are executed randomly.
 ///
 /// # Arguments
 ///
-/// * `test_context` - The test context to use for creating commands.
-/// * `command1, command2, ...` - The command types to test.
+/// * `test_context` - Test context for creating commands.
+/// * `command1, command2, ...` - Command types to test.
 ///
 /// # Examples
 ///
