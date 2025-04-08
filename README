@@ -1,7 +1,7 @@
-MADHOUSE-RS(1)                   User Commands                   MADHOUSE-RS(1)
+MADHOUSE(1)                      User Commands                   MADHOUSE(1)
 
 NAME
-     madhouse-rs - Model-based Rust state machine testing.
+     madhouse - Model-based Rust state machine testing.
 
 SYNOPSIS
      MADHOUSE=1 cargo test [<test_name>]
@@ -45,7 +45,7 @@ SEE ALSO
      proptest(1), cargo-test(1)
 
 BUGS
-     Report at https://github.com/moodmosaic/madhouse-rs
+     Report at https://github.com/moodmosaic/madhouse
 
 AUTHORS
      Nikos Baxevanis, Radu Bahmata
@@ -57,4 +57,4 @@ LICENSE
      GPL-3.0
 
 VERSION
-     0.1.0                       2025-04-06                      MADHOUSE-RS(1)
+     0.1.0                       2025-04-06                      MADHOUSE(1)

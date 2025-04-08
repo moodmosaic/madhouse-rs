@@ -1,4 +1,4 @@
-//! # madhouse-rs
+//! # MADHOUSE
 //!
 //! Model-based Rust state machine testing.
 //!
