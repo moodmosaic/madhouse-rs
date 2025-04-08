@@ -426,8 +426,17 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 
 /// Macro for running stateful tests.
 ///
-/// By default, commands are executed deterministically.
-/// If MADHOUSE=1 environment variable is set, commands are executed randomly.
+/// While commands execute in the order specified in the macro,
+/// their generation depends on several factors:
+///
+/// - In normal mode: Commands run in the order provided, but proptest strategies
+///   may generate different values across runs unless the same seed is used.
+/// - With MADHOUSE=1: The command sequence is permutated randomly.
+/// - With PROPTEST_MAX_SHRINK_ITERS: Failed tests can be shrunk to minimal cases.
+///
+/// The framework honors any PROPTEST environment variables. By default,
+/// the scenario runs with 1 test case and 0 shrink iterations to accommodate
+/// heavyweight non-deterministic test setups found in complex systems.
 ///
 /// # Arguments
 ///
