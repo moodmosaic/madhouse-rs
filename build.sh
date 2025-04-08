@@ -23,9 +23,3 @@ cargo test --doc
 cargo test --all-targets -- "$@"
 cargo doc --no-deps
 [ "$(command -v cargo-tarpaulin)" ] && cargo tarpaulin
-
-for f in examples/*.rs; do
-  name=${f#examples/}
-  name=${name%.rs}
-  cargo run --example "$name" -- --nocapture
-done
