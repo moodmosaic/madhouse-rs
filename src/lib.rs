@@ -46,7 +46,6 @@
 //! };
 //! use proptest::prelude::{Just, Strategy};
 //! use proptest::strategy::ValueTree;
-//! use std::env;
 //! use std::sync::Arc;
 //!
 //! // Define your State implementation.
@@ -452,7 +451,6 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 /// };
 /// use proptest::prelude::Just;
 /// use proptest::strategy::Strategy;
-/// use std::env;
 /// use std::sync::Arc;
 ///
 /// // Define your application state.
@@ -504,7 +502,7 @@ macro_rules! scenario {
             };
 
             // Use MADHOUSE env var to determine test mode.
-            let use_madhouse = env::var("MADHOUSE") == Ok("1".into());
+            let use_madhouse = std::env::var("MADHOUSE") == Ok("1".into());
 
             if use_madhouse {
                 proptest::proptest!(config, |(commands in proptest::collection::vec(
@@ -649,7 +647,6 @@ mod tests {
 mod scenario_tests {
     use super::*;
     use proptest::prelude::Just;
-    use std::env;
     use std::sync::Arc;
 
     #[derive(Debug, Default, Clone)]
@@ -703,7 +700,6 @@ mod scenario_tests {
 #[cfg(test)]
 mod shrinking_scenario_tests {
     use super::*;
-    use std::env;
     use std::sync::Arc;
 
     #[derive(Debug, Default)]
