@@ -440,7 +440,9 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 /// # Arguments
 ///
 /// * `test_context` - Test context for creating commands.
-/// * `command1, command2, ...` - Command types to test.
+/// * `command1, command2, ...` - Either command types (e.g., `Inc`) or
+///   fixed command instances (e.g., `(Inc { amount: 3 })`). Note that
+///   expressions must be wrapped in parentheses.
 ///
 /// # Examples
 ///
@@ -466,13 +468,15 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 /// impl TestContext for AppContext {}
 ///
 /// // Define some commands.
-/// struct IncrementCommand;
+/// struct IncrementCommand {
+///     amount: u64,
+/// }
 /// impl Command<AppState, AppContext> for IncrementCommand {
 ///     fn check(&self, _state: &AppState) -> bool { true }
-///     fn apply(&self, state: &mut AppState) { state.counter += 1; }
-///     fn label(&self) -> String { "INCREMENT".to_string() }
+///     fn apply(&self, state: &mut AppState) { state.counter += self.amount; }
+///     fn label(&self) -> String { format!("INCREMENT({})", self.amount) }
 ///     fn build(_ctx: Arc<AppContext>) -> impl Strategy<Value = CommandWrapper<AppState, AppContext>> {
-///         Just(CommandWrapper::new(IncrementCommand))
+///         (1..=5u64).prop_map(|n| CommandWrapper::new(IncrementCommand { amount: n }))
 ///     }
 /// }
 ///
@@ -488,11 +492,16 @@ pub fn execute_commands<'a, S: State, C: TestContext>(
 ///
 /// // Run the test.
 /// let ctx = Arc::new(AppContext::default());
-/// scenario![ctx, IncrementCommand, ResetCommand];
+/// scenario![
+///     ctx,
+///     IncrementCommand,
+///     ResetCommand,
+///     (IncrementCommand { amount: 42 })
+/// ];
 /// ```
 #[macro_export]
 macro_rules! scenario {
-    ($test_context:expr, $($cmd_type:ident),+ $(,)?) => {
+    ($test_context:expr, $($cmd:tt),+ $(,)?) => {
         {
             let test_context = $test_context.clone();
             let config = proptest::test_runner::Config {
@@ -507,7 +516,7 @@ macro_rules! scenario {
             if use_madhouse {
                 proptest::proptest!(config, |(commands in proptest::collection::vec(
                     proptest::prop_oneof![
-                        $($cmd_type::build(test_context.clone())),+
+                        $(scenario!(@to_strategy test_context.clone(), $cmd)),+
                     ],
                     1..16,
                 ))| {
@@ -517,7 +526,7 @@ macro_rules! scenario {
                 });
             } else {
                 proptest::proptest!(config, |(commands in prop_allof![
-                    $($cmd_type::build(test_context.clone())),+
+                    $(scenario!(@to_strategy test_context.clone(), $cmd)),+
                 ])| {
                     println!("\n=== New Test Run (deterministic mode) ===\n");
                     let mut state = <_ as std::default::Default>::default();
@@ -525,6 +534,14 @@ macro_rules! scenario {
                 });
             }
         }
+    };
+
+    (@to_strategy $ctx:expr, $cmd:ident) => {
+        $cmd::build($ctx)
+    };
+
+    (@to_strategy $ctx:expr, $cmd:expr) => {
+        proptest::prelude::Just(CommandWrapper::new($cmd))
     };
 }
 
@@ -794,5 +811,16 @@ mod shrinking_scenario_tests {
     fn demonstrate_shrinking() {
         let ctx = Arc::new(CounterContext::default());
         scenario![ctx, IncrementCommand, SmallIncrementCommand];
+    }
+
+    #[test]
+    fn demonstrate_shrinking_with_concrete_command() {
+        let ctx = Arc::new(CounterContext::default());
+        scenario![
+            ctx,
+            IncrementCommand,
+            SmallIncrementCommand,
+            (IncrementCommand { amount: 42 })
+        ];
     }
 }
