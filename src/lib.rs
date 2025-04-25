@@ -528,6 +528,18 @@ macro_rules! scenario {
     };
 }
 
+/// Common imports for working with madhouse scenarios.
+///
+/// Import everything needed for scenario testing with a single use statement:
+/// ```
+/// use madhouse::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::{
+        execute_commands, prop_allof, scenario, Command, CommandWrapper, State, TestContext,
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
