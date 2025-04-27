@@ -84,7 +84,7 @@ impl Command<Counter, Ctx> for Reset {
 
 fn main() {
     let ctx = Arc::new(Ctx::default());
-    scenario![ctx, Inc, Reset];
+    scenario![ctx, Inc, Reset, (Inc { amount: 42 })];
 }
 ```
 
