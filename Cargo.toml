@@ -4,4 +4,4 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-proptest = "1.6.*"
+proptest = { version = "1.6.*", default-features = false, features = ["std"] }
